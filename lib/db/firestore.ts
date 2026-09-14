@@ -76,39 +76,33 @@ export class FirestoreAdapter implements DatabaseAdapter {
   }
 
   async getAllBookings(): Promise<BookingRecord[]> {
-    try {
-      const url = `${this.getBaseUrl()}/${this.collectionName}?pageSize=500${
-        this.apiKey ? `&key=${this.apiKey}` : ""
-      }`;
+    const url = `${this.getBaseUrl()}/${this.collectionName}?pageSize=500${
+      this.apiKey ? `&key=${this.apiKey}` : ""
+    }`;
 
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-      });
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
 
-      if (!res.ok) {
-        console.warn(`Firestore GET failed (${res.status}): Falling back.`);
-        return [];
-      }
+    if (!res.ok) {
+      throw new Error(`Firestore GET failed (${res.status})`);
+    }
 
-      const data = await res.json();
-      if (!data.documents || !Array.isArray(data.documents)) {
-        return [];
-      }
-
-      const records: BookingRecord[] = data.documents
-        .map((doc: any) => this.fromFirestoreDocument(doc))
-        .filter(Boolean);
-
-      // Sort by creation date descending
-      return records.sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    } catch (err) {
-      console.error("Firestore getAllBookings error:", err);
+    const data = await res.json();
+    if (!data.documents || !Array.isArray(data.documents)) {
       return [];
     }
+
+    const records: BookingRecord[] = data.documents
+      .map((doc: any) => this.fromFirestoreDocument(doc))
+      .filter(Boolean);
+
+    // Sort by creation date descending
+    return records.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
   }
 
   async getBookingById(id: string): Promise<BookingRecord | null> {
@@ -248,27 +242,24 @@ export class FirestoreAdapter implements DatabaseAdapter {
   }
 
   async getAllConsultations(): Promise<ConsultationRecord[]> {
-    try {
-      const url = `${this.getBaseUrl()}/${this.consultationsCollection}?pageSize=100${
-        this.apiKey ? `&key=${this.apiKey}` : ""
-      }`;
+    const url = `${this.getBaseUrl()}/${this.consultationsCollection}?pageSize=100${
+      this.apiKey ? `&key=${this.apiKey}` : ""
+    }`;
 
-      const res = await fetch(url, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-      });
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    });
 
-      if (!res.ok) return [];
-
-      const data = await res.json();
-      if (!data.documents || !Array.isArray(data.documents)) return [];
-
-      return data.documents.map((doc: any) => this.fromFirestoreDocument(doc) as ConsultationRecord);
-    } catch (err) {
-      console.error("Firestore getAllConsultations error:", err);
-      return [];
+    if (!res.ok) {
+      throw new Error(`Firestore GET consultations failed (${res.status})`);
     }
+
+    const data = await res.json();
+    if (!data.documents || !Array.isArray(data.documents)) return [];
+
+    return data.documents.map((doc: any) => this.fromFirestoreDocument(doc) as ConsultationRecord);
   }
 
   async updateConsultation(id: string, updates: Partial<ConsultationRecord>): Promise<ConsultationRecord | null> {

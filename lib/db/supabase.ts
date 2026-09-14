@@ -29,29 +29,25 @@ export class SupabaseAdapter implements DatabaseAdapter {
   }
 
   async getAllBookings(): Promise<BookingRecord[]> {
-    try {
-      if (!this.supabaseUrl || !this.supabaseKey) return [];
-
-      const res = await fetch(`${this.supabaseUrl}/rest/v1/${this.tableName}?select=*&order=createdAt.desc`, {
-        method: "GET",
-        headers: this.getHeaders(),
-        cache: "no-store",
-      });
-
-      if (!res.ok) {
-        console.warn(`Supabase GET failed (${res.status})`);
-        return [];
-      }
-
-      const rows = await res.json();
-      return rows.map((r: any) => ({
-        ...r,
-        assignedTechnician: r.assignedTechnician ? JSON.parse(typeof r.assignedTechnician === "string" ? r.assignedTechnician : JSON.stringify(r.assignedTechnician)) : undefined,
-      }));
-    } catch (err) {
-      console.error("Supabase getAllBookings error:", err);
-      return [];
+    if (!this.supabaseUrl || !this.supabaseKey) {
+      throw new Error("Supabase credentials not configured");
     }
+
+    const res = await fetch(`${this.supabaseUrl}/rest/v1/${this.tableName}?select=*&order=createdAt.desc`, {
+      method: "GET",
+      headers: this.getHeaders(),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Supabase GET failed (${res.status})`);
+    }
+
+    const rows = await res.json();
+    return rows.map((r: any) => ({
+      ...r,
+      assignedTechnician: r.assignedTechnician ? JSON.parse(typeof r.assignedTechnician === "string" ? r.assignedTechnician : JSON.stringify(r.assignedTechnician)) : undefined,
+    }));
   }
 
   async getBookingById(id: string): Promise<BookingRecord | null> {
@@ -173,21 +169,21 @@ export class SupabaseAdapter implements DatabaseAdapter {
   }
 
   async getAllConsultations(): Promise<ConsultationRecord[]> {
-    try {
-      if (!this.supabaseUrl || !this.supabaseKey) return [];
-
-      const res = await fetch(`${this.supabaseUrl}/rest/v1/${this.consultationsTable}?select=*&order=createdAt.desc`, {
-        method: "GET",
-        headers: this.getHeaders(),
-        cache: "no-store",
-      });
-
-      if (!res.ok) return [];
-      return (await res.json()) as ConsultationRecord[];
-    } catch (err) {
-      console.error("Supabase getAllConsultations error:", err);
-      return [];
+    if (!this.supabaseUrl || !this.supabaseKey) {
+      throw new Error("Supabase credentials not configured");
     }
+
+    const res = await fetch(`${this.supabaseUrl}/rest/v1/${this.consultationsTable}?select=*&order=createdAt.desc`, {
+      method: "GET",
+      headers: this.getHeaders(),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      throw new Error(`Supabase GET consultations failed (${res.status})`);
+    }
+
+    return (await res.json()) as ConsultationRecord[];
   }
 
   async updateConsultation(id: string, updates: Partial<ConsultationRecord>): Promise<ConsultationRecord | null> {

@@ -91,6 +91,23 @@ class LocalFileAdapter implements DatabaseAdapter {
     return this.writeAll([]);
   }
 
+  setAllBookings(bookings: BookingRecord[]): boolean {
+    return this.writeAll(bookings);
+  }
+
+  setAllConsultations(consultations: ConsultationRecord[]): boolean {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+      fs.writeFileSync(CONSULTATIONS_FILE, JSON.stringify(consultations, null, 2), "utf8");
+      return true;
+    } catch (err) {
+      console.error("Error setting local consultations:", err);
+      return false;
+    }
+  }
+
   async addConsultation(consultation: ConsultationRecord): Promise<ConsultationRecord> {
     try {
       if (!fs.existsSync(DATA_DIR)) {
@@ -153,60 +170,48 @@ class DualCloudAdapter implements DatabaseAdapter {
   }
 
   async getAllBookings(): Promise<BookingRecord[]> {
+    // 1. Try Primary Cloud (Supabase)
     try {
       const records = await this.primary.getAllBookings();
-      if (records && records.length > 0) {
-        this.syncLocal(records);
+      if (Array.isArray(records)) {
+        this.local.setAllBookings(records);
         return records;
       }
+    } catch { }
+
+    // 2. Try Secondary Cloud (Firestore)
+    try {
       const secondaryRecords = await this.secondary.getAllBookings();
-      if (secondaryRecords && secondaryRecords.length > 0) {
-        this.syncLocal(secondaryRecords);
+      if (Array.isArray(secondaryRecords)) {
+        this.local.setAllBookings(secondaryRecords);
         return secondaryRecords;
       }
-      return await this.local.getAllBookings();
-    } catch {
-      try {
-        const secondaryRecords = await this.secondary.getAllBookings();
-        if (secondaryRecords && secondaryRecords.length > 0) {
-          this.syncLocal(secondaryRecords);
-          return secondaryRecords;
-        }
-      } catch { }
-      return await this.local.getAllBookings();
-    }
-  }
-
-  private syncLocal(records: BookingRecord[]) {
-    try {
-      for (const r of records) {
-        this.local.addBooking(r);
-      }
     } catch { }
+
+    // 3. Fallback to Local only if BOTH clouds failed/offline
+    return await this.local.getAllBookings();
   }
 
   async getBookingById(id: string): Promise<BookingRecord | null> {
     try {
       const rec = await this.primary.getBookingById(id);
       if (rec) return rec;
+    } catch { }
+
+    try {
       const secondaryRec = await this.secondary.getBookingById(id);
       if (secondaryRec) return secondaryRec;
-      return await this.local.getBookingById(id);
-    } catch {
-      try {
-        const secondaryRec = await this.secondary.getBookingById(id);
-        if (secondaryRec) return secondaryRec;
-      } catch { }
-      return await this.local.getBookingById(id);
-    }
+    } catch { }
+
+    return await this.local.getBookingById(id);
   }
 
   async addBooking(booking: BookingRecord): Promise<BookingRecord> {
     await this.local.addBooking(booking);
-    Promise.allSettled([
+    await Promise.allSettled([
       this.primary.addBooking(booking),
       this.secondary.addBooking(booking),
-    ]).catch(() => { });
+    ]);
     return booking;
   }
 
@@ -242,27 +247,33 @@ class DualCloudAdapter implements DatabaseAdapter {
 
   async addConsultation(consultation: ConsultationRecord): Promise<ConsultationRecord> {
     await this.local.addConsultation(consultation);
-    Promise.allSettled([
+    await Promise.allSettled([
       this.primary.addConsultation ? this.primary.addConsultation(consultation) : Promise.resolve(),
       this.secondary.addConsultation ? this.secondary.addConsultation(consultation) : Promise.resolve(),
-    ]).catch(() => { });
+    ]);
     return consultation;
   }
 
   async getAllConsultations(): Promise<ConsultationRecord[]> {
-    try {
-      if (this.primary.getAllConsultations) {
+    if (this.primary.getAllConsultations) {
+      try {
         const primaryList = await this.primary.getAllConsultations();
-        if (primaryList && primaryList.length > 0) return primaryList;
-      }
-      if (this.secondary.getAllConsultations) {
-        const secondaryList = await this.secondary.getAllConsultations();
-        if (secondaryList && secondaryList.length > 0) return secondaryList;
-      }
-      return await this.local.getAllConsultations();
-    } catch {
-      return await this.local.getAllConsultations();
+        if (Array.isArray(primaryList)) {
+          this.local.setAllConsultations(primaryList);
+          return primaryList;
+        }
+      } catch { }
     }
+    if (this.secondary.getAllConsultations) {
+      try {
+        const secondaryList = await this.secondary.getAllConsultations();
+        if (Array.isArray(secondaryList)) {
+          this.local.setAllConsultations(secondaryList);
+          return secondaryList;
+        }
+      } catch { }
+    }
+    return await this.local.getAllConsultations();
   }
 
   async updateConsultation(id: string, updates: Partial<ConsultationRecord>): Promise<ConsultationRecord | null> {

@@ -695,9 +695,12 @@ export default function AdminOperationsDashboard() {
         setBookings((prev) => prev.filter((b) => b.id !== bookingId));
         if (selectedBookingDetail?.id === bookingId) setSelectedBookingDetail(null);
         fetchData();
+      } else {
+        alert(data.error || "Failed to delete booking.");
       }
     } catch (err) {
       console.error("Delete booking error:", err);
+      alert("Failed to delete booking. Please check connection.");
     }
   };
 
