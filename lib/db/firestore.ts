@@ -5,25 +5,31 @@ import { BookingRecord, ConsultationRecord, DatabaseAdapter, DatabaseEngineType 
  * Communicates with Google Cloud Firestore via REST API with OAuth2 / Service Account credentials.
  */
 export class FirestoreAdapter implements DatabaseAdapter {
-  private projectId: string;
-  private apiKey?: string;
   private collectionName = "celebrate_bihar_bookings";
   private consultationsCollection = "celebrate_bihar_consultations";
-
-  constructor() {
-    this.projectId =
-      process.env.FIREBASE_PROJECT_ID ||
-      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-      "celebrate-bihar-default";
-    this.apiKey = process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  }
 
   getEngineType(): DatabaseEngineType {
     return "FIRESTORE";
   }
 
+  private getProjectId(): string {
+    return (
+      process.env.FIREBASE_PROJECT_ID ||
+      process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+      "celebrate-bihar-cac51"
+    ).trim();
+  }
+
+  private getApiKey(): string {
+    return (
+      process.env.FIREBASE_API_KEY ||
+      process.env.NEXT_PUBLIC_FIREBASE_API_KEY ||
+      ""
+    ).trim();
+  }
+
   private getBaseUrl(): string {
-    return `https://firestore.googleapis.com/v1/projects/${this.projectId}/databases/(default)/documents`;
+    return `https://firestore.googleapis.com/v1/projects/${this.getProjectId()}/databases/(default)/documents`;
   }
 
   /**
@@ -77,7 +83,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
 
   async getAllBookings(): Promise<BookingRecord[]> {
     const url = `${this.getBaseUrl()}/${this.collectionName}?pageSize=500${
-      this.apiKey ? `&key=${this.apiKey}` : ""
+      this.getApiKey() ? `&key=${this.getApiKey()}` : ""
     }`;
 
     const res = await fetch(url, {
@@ -108,7 +114,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
   async getBookingById(id: string): Promise<BookingRecord | null> {
     try {
       const url = `${this.getBaseUrl()}/${this.collectionName}/${encodeURIComponent(id)}${
-        this.apiKey ? `&key=${this.apiKey}` : ""
+        this.getApiKey() ? `?key=${this.getApiKey()}` : ""
       }`;
 
       const res = await fetch(url, {
@@ -130,7 +136,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
     try {
       const url = `${this.getBaseUrl()}/${this.collectionName}?documentId=${encodeURIComponent(
         booking.id
-      )}${this.apiKey ? `&key=${this.apiKey}` : ""}`;
+      )}${this.getApiKey() ? `&key=${this.getApiKey()}` : ""}`;
 
       const fields = this.toFirestoreFields(booking);
 
@@ -167,7 +173,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
       };
 
       const url = `${this.getBaseUrl()}/${this.collectionName}/${encodeURIComponent(id)}${
-        this.apiKey ? `&key=${this.apiKey}` : ""
+        this.getApiKey() ? `?key=${this.getApiKey()}` : ""
       }`;
 
       const fields = this.toFirestoreFields(merged);
@@ -193,7 +199,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
   async deleteBooking(id: string): Promise<boolean> {
     try {
       const url = `${this.getBaseUrl()}/${this.collectionName}/${encodeURIComponent(id)}${
-        this.apiKey ? `&key=${this.apiKey}` : ""
+        this.getApiKey() ? `?key=${this.getApiKey()}` : ""
       }`;
 
       const res = await fetch(url, {
@@ -224,7 +230,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
     try {
       const url = `${this.getBaseUrl()}/${this.consultationsCollection}?documentId=${encodeURIComponent(
         consultation.id
-      )}${this.apiKey ? `&key=${this.apiKey}` : ""}`;
+      )}${this.getApiKey() ? `&key=${this.getApiKey()}` : ""}`;
 
       const fields = this.toFirestoreFields(consultation);
 
@@ -243,7 +249,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
 
   async getAllConsultations(): Promise<ConsultationRecord[]> {
     const url = `${this.getBaseUrl()}/${this.consultationsCollection}?pageSize=100${
-      this.apiKey ? `&key=${this.apiKey}` : ""
+      this.getApiKey() ? `&key=${this.getApiKey()}` : ""
     }`;
 
     const res = await fetch(url, {
@@ -269,7 +275,7 @@ export class FirestoreAdapter implements DatabaseAdapter {
         .join("&");
 
       const url = `${this.getBaseUrl()}/${this.consultationsCollection}/${encodeURIComponent(id)}?${updateMask}${
-        this.apiKey ? `&key=${this.apiKey}` : ""
+        this.getApiKey() ? `&key=${this.getApiKey()}` : ""
       }`;
 
       const fields = this.toFirestoreFields(updates);
