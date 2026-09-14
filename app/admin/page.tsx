@@ -27,6 +27,8 @@ import {
   KeyRound,
   Mail,
   ArrowLeft,
+  Truck,
+  User,
   Plus,
   FileText,
   Wrench,
@@ -231,7 +233,7 @@ export default function AdminOperationsDashboard() {
 
     if (reason === "inactivity") {
       setInactivityNotice(true);
-      setAuthError("🔒 Session timed out after 15 minutes of inactivity. Please re-authenticate.");
+      setAuthError("Session timed out after 15 minutes of inactivity. Please re-authenticate.");
     }
   }, []);
 
@@ -421,7 +423,7 @@ export default function AdminOperationsDashboard() {
       if (res.status === 429) {
         setIsLocked(true);
         setLockoutSeconds(data.remainingLockSeconds || 900);
-        setAuthError(data.error || "🚫 Too many failed attempts. Temporary security lockout activated.");
+        setAuthError(data.error || "Too many failed attempts. Temporary security lockout activated.");
         return;
       }
 
@@ -484,7 +486,7 @@ export default function AdminOperationsDashboard() {
       if (res.status === 429) {
         setIsLocked(true);
         setLockoutSeconds(data.remainingLockSeconds || 900);
-        setAuthError(data.error || "🚫 Rate limit exceeded. Account temporarily locked.");
+        setAuthError(data.error || "Rate limit exceeded. Account temporarily locked.");
         return;
       }
 
@@ -998,28 +1000,28 @@ export default function AdminOperationsDashboard() {
     const arrival = arrivalTimeWindow || booking.assignedTechnician?.arrivalWindow || "Within 2 Hours";
 
     return (
-      `🚨 *CELEBRATE BIHAR • SERVICE DISPATCH ORDER*\n` +
+      `*CELEBRATE BIHAR • SERVICE DISPATCH ORDER*\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `🆔 *Booking ID:* ${booking.id}\n` +
-      `⏰ *Preferred Slot:* ${booking.slot}\n` +
-      `⏱️ *Arrival Window:* ${arrival}\n\n` +
-      `👤 *CUSTOMER INFORMATION:*\n` +
+      `*Booking ID:* ${booking.id}\n` +
+      `*Preferred Slot:* ${booking.slot}\n` +
+      `*Arrival Window:* ${arrival}\n\n` +
+      `*CUSTOMER INFORMATION:*\n` +
       `• *Name:* ${booking.customerName}\n` +
       `• *Primary Contact:* +91 ${booking.phoneNumber}\n` +
       `${booking.alternatePhone ? `• *Alternate Contact:* +91 ${booking.alternatePhone}\n` : ""}` +
       `${booking.email && booking.email !== "Not Provided" ? `• *Email:* ${booking.email}\n` : ""}\n` +
-      `📍 *SERVICE LOCATION & MAPS:*\n` +
+      `*SERVICE LOCATION & MAPS:*\n` +
       `• *Full Address:* ${booking.address}\n` +
       `${booking.landmark ? `• *Landmark:* ${booking.landmark}\n` : ""}` +
       `• *District:* ${booking.district} Hub\n` +
-      `🗺️ *Google Maps Navigation:* ${mapsLink}\n\n` +
-      `🛠️ *APPLIANCE & SERVICE SPECIFICATIONS:*\n` +
+      `*Google Maps Navigation:* ${mapsLink}\n\n` +
+      `*APPLIANCE & SERVICE SPECIFICATIONS:*\n` +
       `• *Service Name:* ${booking.serviceName}\n` +
       `• *Appliance Details:* ${booking.applianceDetail}\n` +
       `• *Quantity:* ${booking.unitCount || 1} Unit(s)\n` +
       `• *Advance Token Paid:* ₹${booking.advanceFee || 99} (UTR: ${booking.utrNumber})\n` +
       `${booking.specialNotes ? `• *Customer Special Notes:* ${booking.specialNotes}\n` : ""}\n` +
-      `📋 *INSTRUCTIONS FOR TECHNICIAN:*\n` +
+      `*INSTRUCTIONS FOR TECHNICIAN:*\n` +
       `1. Call customer (+91 ${booking.phoneNumber}) 15 minutes before arrival.\n` +
       `2. Carry verified Celebrate Bihar digital toolkit and diagnostic equipment.\n` +
       `3. Confirm diagnostic inspection with customer before parts replacement.\n` +
@@ -1167,7 +1169,8 @@ export default function AdminOperationsDashboard() {
                       }`}
                     >
                       <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                        <span>👑 Super Admin</span>
+                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Super Admin</span>
                       </div>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                         Full Catalog, Security & Operations
@@ -1188,7 +1191,8 @@ export default function AdminOperationsDashboard() {
                       }`}
                     >
                       <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                        <span>🚚 Fleet Dispatcher</span>
+                        <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                        <span>Fleet Dispatcher</span>
                       </div>
                       <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                         Bookings, Techs & WhatsApp Desk
@@ -1469,12 +1473,12 @@ export default function AdminOperationsDashboard() {
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 text-xs font-bold shadow-2xs">
               {currentUser?.role === "SUPER_ADMIN" ? (
                 <>
-                  <span className="text-amber-500">👑</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
                   <span>Super Admin</span>
                 </>
               ) : (
                 <>
-                  <span className="text-blue-500">🚚</span>
+                  <Truck className="w-3.5 h-3.5 text-blue-500" />
                   <span>Dispatcher</span>
                 </>
               )}
@@ -1815,7 +1819,7 @@ export default function AdminOperationsDashboard() {
                     className="w-full px-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 font-semibold"
                   >
                     <option value="ALL">All Statuses ({bookings.length})</option>
-                    <option value="NEEDS_VERIFICATION">⚠️ Needs Dispatch ({stats.pendingVerification})</option>
+                    <option value="NEEDS_VERIFICATION">Needs Dispatch ({stats.pendingVerification})</option>
                     <option value="NEW_PENDING_DISPATCH">Pending Dispatch</option>
                     <option value="TECHNICIAN_ASSIGNED">Technician Assigned ({stats.assigned})</option>
                     <option value="IN_PROGRESS">In Progress ({stats.inProgress})</option>
@@ -1946,7 +1950,7 @@ export default function AdminOperationsDashboard() {
 
                             <td className="py-3.5 px-4">
                               <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 inline-block border border-zinc-200 dark:border-zinc-700">
-                                📍 {booking.district}
+                                {booking.district}
                               </span>
                             </td>
 
@@ -2146,7 +2150,7 @@ export default function AdminOperationsDashboard() {
                               {tech.name}
                             </h4>
                             <span className="text-[11px] text-zinc-500 block">
-                              📍 {tech.district} Hub
+                              {tech.district} Hub
                             </span>
                           </div>
                         </div>
@@ -2208,7 +2212,7 @@ export default function AdminOperationsDashboard() {
                                 {tech.name}
                               </h4>
                               <span className="text-[11px] text-zinc-500 block">
-                                📍 {tech.district || "Assigned"} Hub
+                                {tech.district || "Assigned"} Hub
                               </span>
                             </div>
                           </div>
@@ -2305,13 +2309,17 @@ export default function AdminOperationsDashboard() {
                       key={dist}
                       type="button"
                       onClick={() => toggleDistrictHub(dist)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${isActive
+                      className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${isActive
                           ? "bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 border-zinc-950 dark:border-white shadow-2xs font-bold"
                           : "bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
                         }`}
                     >
-                      {isActive ? "✓ " : "+ "}
-                      {dist}
+                      {isActive ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <Plus className="w-3 h-3 text-zinc-400" />
+                      )}
+                      <span>{dist}</span>
                     </button>
                   );
                 })}
@@ -2471,7 +2479,7 @@ export default function AdminOperationsDashboard() {
                           </td>
                           <td className="py-3.5 px-4">
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700">
-                              📍 {c.district}
+                              {c.district}
                             </span>
                           </td>
                           <td className="py-3.5 px-4 font-bold text-zinc-700 dark:text-zinc-300">
@@ -2998,8 +3006,8 @@ export default function AdminOperationsDashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700 dark:text-zinc-300">
                   <p><strong>Customer:</strong> {assignTechBooking.customerName}</p>
                   <p><strong>Mobile:</strong> +91 {assignTechBooking.phoneNumber}</p>
-                  <p><strong>District:</strong> 📍 {assignTechBooking.district}</p>
-                  <p><strong>Slot:</strong> ⏰ {assignTechBooking.slot}</p>
+                  <p><strong>District:</strong> {assignTechBooking.district}</p>
+                  <p><strong>Slot:</strong> {assignTechBooking.slot}</p>
                   <p className="sm:col-span-2"><strong>Address:</strong> {assignTechBooking.address}</p>
                   <p className="sm:col-span-2"><strong>Service &amp; Appliance:</strong> {assignTechBooking.serviceName} • {assignTechBooking.applianceDetail}</p>
                   <p><strong>Advance Token:</strong> ₹{assignTechBooking.advanceFee || 99} (UTR: {assignTechBooking.utrNumber})</p>
@@ -3025,7 +3033,7 @@ export default function AdminOperationsDashboard() {
                       <option value="">-- Or enter technician details manually below --</option>
                       {technicians.map((t) => (
                         <option key={t.id} value={t.id}>
-                          {t.name} (📍 {t.district} - {t.specialty} • +91 {t.phone})
+                          {t.name} ({t.district} • {t.specialty} • +91 {t.phone})
                         </option>
                       ))}
                     </select>
@@ -3128,7 +3136,7 @@ export default function AdminOperationsDashboard() {
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-6 py-2.5 rounded-full font-bold bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-zinc-100 shadow-sm hover:shadow hover:-translate-y-0.5 transition-all cursor-pointer disabled:opacity-75"
                   >
                     <Send className="w-3.5 h-3.5 text-blue-400 dark:text-blue-600" />
-                    <span>{isSavingTech ? "Saving & Opening..." : "🚀 Confirm & Dispatch on WhatsApp"}</span>
+                    <span>{isSavingTech ? "Saving & Opening..." : "Confirm & Dispatch on WhatsApp"}</span>
                   </button>
                 </div>
               </form>

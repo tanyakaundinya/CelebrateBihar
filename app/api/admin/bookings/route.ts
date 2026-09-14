@@ -14,7 +14,7 @@ import { verifyAdminAuth } from "@/lib/auth/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
-    // 🔐 Security Verification: Strictly restrict customer PII to authenticated admins
+    // Security Verification: Strictly restrict customer PII to authenticated admins
     if (!verifyAdminAuth(req)) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Admin credentials required." },

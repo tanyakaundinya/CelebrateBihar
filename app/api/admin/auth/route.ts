@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `🚫 Security Lockout: Too many failed attempts. Please try again in ${rateStatus.remainingLockSeconds} seconds.`,
+          error: `Security Lockout: Too many failed attempts. Please try again in ${rateStatus.remainingLockSeconds} seconds.`,
           isLocked: true,
           remainingLockSeconds: rateStatus.remainingLockSeconds,
         },
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json(
             {
               success: false,
-              error: `🚨 Rate Limit Exceeded: Account temporarily locked for 15 minutes. Security alert dispatched to admin.`,
+              error: `Rate Limit Exceeded: Account temporarily locked for 15 minutes. Security alert dispatched to admin.`,
               isLocked: true,
               remainingLockSeconds: attemptResult.remainingLockSeconds,
             },
@@ -133,8 +133,8 @@ export async function POST(req: NextRequest) {
             displayName: user.displayName,
           },
           message: emailSent
-            ? `🔐 2-Factor verification code dispatched to ${maskedEmail}.`
-            : `🔐 Verification code generated. (SMTP Notice: Update App Password in .env.local)`,
+            ? `2-Factor verification code dispatched to ${maskedEmail}.`
+            : `Verification code generated. (SMTP Notice: Update App Password in .env.local)`,
         });
       }
 
