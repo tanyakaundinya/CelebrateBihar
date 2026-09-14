@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Celebrate Bihar Customer Bookings
+    match /celebrate_bihar_bookings/{bookingId} {
+      // Anyone can create a booking through the public website
+      allow create: if request.resource.data.customerName is string
+                    && request.resource.data.phoneNumber is string
+                    && request.resource.data.district is string;
+      
+      // Reading individual bookings or listing allowed
+      allow read: if true;
+      
+      // Updating status & technician assignment
+      allow update, delete: if true;
+    }
+
+    // Institutional Consultations
+    match /celebrate_bihar_consultations/{consultationId} {
+      allow create: if request.resource.data.customerName is string
+                    && request.resource.data.phoneNumber is string;
+      allow read, update, delete: if true;
+    }
+  }
+}
