@@ -146,7 +146,7 @@ class DualCloudAdapter implements DatabaseAdapter {
   constructor(
     private primary: DatabaseAdapter,
     private secondary: DatabaseAdapter
-  ) {}
+  ) { }
 
   getEngineType(): DatabaseEngineType {
     return "HYBRID_DUAL_CLOUD";
@@ -172,7 +172,7 @@ class DualCloudAdapter implements DatabaseAdapter {
           this.syncLocal(secondaryRecords);
           return secondaryRecords;
         }
-      } catch {}
+      } catch { }
       return await this.local.getAllBookings();
     }
   }
@@ -182,7 +182,7 @@ class DualCloudAdapter implements DatabaseAdapter {
       for (const r of records) {
         this.local.addBooking(r);
       }
-    } catch {}
+    } catch { }
   }
 
   async getBookingById(id: string): Promise<BookingRecord | null> {
@@ -196,7 +196,7 @@ class DualCloudAdapter implements DatabaseAdapter {
       try {
         const secondaryRec = await this.secondary.getBookingById(id);
         if (secondaryRec) return secondaryRec;
-      } catch {}
+      } catch { }
       return await this.local.getBookingById(id);
     }
   }
@@ -206,7 +206,7 @@ class DualCloudAdapter implements DatabaseAdapter {
     Promise.allSettled([
       this.primary.addBooking(booking),
       this.secondary.addBooking(booking),
-    ]).catch(() => {});
+    ]).catch(() => { });
     return booking;
   }
 
@@ -245,7 +245,7 @@ class DualCloudAdapter implements DatabaseAdapter {
     Promise.allSettled([
       this.primary.addConsultation ? this.primary.addConsultation(consultation) : Promise.resolve(),
       this.secondary.addConsultation ? this.secondary.addConsultation(consultation) : Promise.resolve(),
-    ]).catch(() => {});
+    ]).catch(() => { });
     return consultation;
   }
 

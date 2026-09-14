@@ -10,9 +10,18 @@ import {
   getActiveDatabaseEngine,
   ConsultationRecord,
 } from "@/lib/bookingsStore";
+import { verifyAdminAuth } from "@/lib/auth/adminAuth";
 
 export async function GET(req: NextRequest) {
   try {
+    // 🔐 Security Verification: Strictly restrict customer PII to authenticated admins
+    if (!verifyAdminAuth(req)) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Admin credentials required." },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
     const district = searchParams.get("district");
@@ -101,7 +110,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Calculate strictly authentic analytics from genuine customer bookings
+    // Calculate analytics from bookings
     const stats = {
       total: applianceBookings.length,
       revenueAdvance: applianceBookings
@@ -135,6 +144,13 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req)) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Admin credentials required." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
 
     if (!body.customerName || !body.phoneNumber || !body.district || !body.address) {
@@ -163,6 +179,13 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req)) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Admin credentials required." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const { id, bookingId, type, ...updates } = body;
     const targetId = id || bookingId;
@@ -210,11 +233,24 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req)) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Admin credentials required." },
+        { status: 401 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id") || searchParams.get("bookingId");
     const action = searchParams.get("action");
 
     if (action === "clear_all") {
+      if (!verifyAdminAuth(req, "SUPER_ADMIN")) {
+        return NextResponse.json(
+          { success: false, error: "Access Denied. Only Super Administrators can clear all bookings." },
+          { status: 403 }
+        );
+      }
       await clearAllBookingsAsync();
       return NextResponse.json({
         success: true,

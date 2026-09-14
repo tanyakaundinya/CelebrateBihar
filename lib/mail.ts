@@ -180,10 +180,10 @@ export async function sendBookingConfirmationEmails(booking: {
   // 2. Email to Service Provider / Admin Desk
   const adminMailOptions = adminEmail
     ? {
-        from: `"Celebrate Bihar Leads" <${process.env.SMTP_USER}>`,
-        to: adminEmail,
-        subject: `🚨 NEW PAID BOOKING: [${booking.bookingId}] - ${booking.customerName} (${booking.district})`,
-        html: `
+      from: `"Celebrate Bihar Leads" <${process.env.SMTP_USER}>`,
+      to: adminEmail,
+      subject: `🚨 NEW PAID BOOKING: [${booking.bookingId}] - ${booking.customerName} (${booking.district})`,
+      html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 2px solid #2563eb; border-radius: 16px; overflow: hidden;">
             <div style="background-color: #2563eb; padding: 24px; color: #ffffff;">
               <span style="background-color: #ffffff; color: #2563eb; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 12px; text-transform: uppercase;">Advance Paid (₹${booking.advanceFee || 99})</span>
@@ -230,7 +230,7 @@ export async function sendBookingConfirmationEmails(booking: {
             </div>
           </div>
         `,
-      }
+    }
     : null;
 
   try {
@@ -278,10 +278,10 @@ export async function sendConsultationInquiryEmail(consultation: {
   // 1. Email to Customer (if valid email provided)
   const customerMailOptions = consultation.email && consultation.email.includes("@")
     ? {
-        from: `"Celebrate Bihar Operations" <${process.env.SMTP_USER}>`,
-        to: consultation.email,
-        subject: `📋 Consultation Request Logged: [${consultation.consultationId}] - Celebrate Bihar`,
-        html: `
+      from: `"Celebrate Bihar Operations" <${process.env.SMTP_USER}>`,
+      to: consultation.email,
+      subject: `📋 Consultation Request Logged: [${consultation.consultationId}] - Celebrate Bihar`,
+      html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden;">
             <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px 24px; text-align: center; color: #ffffff;">
               <h1 style="margin: 0; font-size: 22px; font-weight: 800;">Consultation Request Received</h1>
@@ -333,16 +333,16 @@ export async function sendConsultationInquiryEmail(consultation: {
             </div>
           </div>
         `,
-      }
+    }
     : null;
 
   // 2. Email to Admin / Operations Lead
   const adminMailOptions = adminEmail
     ? {
-        from: `"Celebrate Bihar Leads" <${process.env.SMTP_USER}>`,
-        to: adminEmail,
-        subject: `🚨 NEW FREE CONSULTATION INQUIRY: [${consultation.consultationId}] - ${consultation.customerName} (${consultation.district})`,
-        html: `
+      from: `"Celebrate Bihar Leads" <${process.env.SMTP_USER}>`,
+      to: adminEmail,
+      subject: `🚨 NEW FREE CONSULTATION INQUIRY: [${consultation.consultationId}] - ${consultation.customerName} (${consultation.district})`,
+      html: `
           <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 2px solid #2563eb; border-radius: 16px; overflow: hidden;">
             <div style="background-color: #2563eb; padding: 24px; color: #ffffff;">
               <span style="background-color: #ffffff; color: #2563eb; padding: 4px 10px; border-radius: 6px; font-weight: 800; font-size: 12px; text-transform: uppercase;">100% Free Consultation Inquiry</span>
@@ -377,7 +377,7 @@ export async function sendConsultationInquiryEmail(consultation: {
             </div>
           </div>
         `,
-      }
+    }
     : null;
 
   try {
@@ -389,5 +389,123 @@ export async function sendConsultationInquiryEmail(consultation: {
   } catch (error) {
     console.error("Error sending consultation email:", error);
     return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
+ * 🔐 Send Admin 2-Factor Authentication (2FA) OTP to Admin Email
+ */
+export async function sendAdmin2faOtpEmail(
+  toEmail: string,
+  otpCode: string,
+  username: string,
+  role: string,
+  ipAddress?: string
+) {
+  const transporter = getTransporter();
+
+  if (!transporter) {
+    console.warn("SMTP not configured. Skipping 2FA OTP email.");
+    return { success: false, error: "SMTP not configured" };
+  }
+
+  const mailOptions = {
+    from: `"Celebrate Bihar Security" <${process.env.SMTP_USER}>`,
+    to: toEmail,
+    subject: `🔐 [${otpCode}] Your Celebrate Bihar Admin Login Verification Code`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+        <div style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 30px 24px; text-align: center; color: #ffffff;">
+          <span style="background-color: #3b82f6; color: #ffffff; padding: 4px 12px; border-radius: 9999px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 1px;">Admin Security Checkpoint</span>
+          <h1 style="margin: 12px 0 0; font-size: 22px; font-weight: 800;">Two-Factor Authentication</h1>
+        </div>
+
+        <div style="padding: 30px 24px; color: #1e293b;">
+          <p style="font-size: 15px; margin: 0 0 16px; color: #334155;">
+            An administrative login attempt was initiated for account: <strong>${username}</strong> (${role}).
+          </p>
+
+          <p style="font-size: 14px; margin: 0 0 20px; color: #64748b;">
+            Use the one-time verification code below to authorize this session:
+          </p>
+
+          <div style="background-color: #f8fafc; border: 2px dashed #2563eb; border-radius: 12px; padding: 24px; text-align: center; margin: 0 0 24px;">
+            <div style="font-family: monospace; font-size: 40px; font-weight: 800; letter-spacing: 10px; color: #2563eb;">${otpCode}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 8px;">⏱️ Code expires in <strong>5 minutes</strong></div>
+          </div>
+
+          <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #991b1b;">
+            ⚠️ <strong>Security Notice:</strong> If you did not attempt this login, your credentials may be compromised. Please change your master password immediately.
+          </div>
+
+          <table style="width: 100%; font-size: 12px; color: #64748b; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 4px 0;"><strong>Timestamp:</strong></td>
+              <td style="padding: 4px 0; text-align: right;">${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST</td>
+            </tr>
+            ${ipAddress ? `
+            <tr>
+              <td style="padding: 4px 0;"><strong>Origin IP:</strong></td>
+              <td style="padding: 4px 0; text-align: right;">${ipAddress}</td>
+            </tr>
+            ` : ""}
+          </table>
+        </div>
+
+        <div style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 24px; text-align: center; font-size: 11px; color: #94a3b8;">
+          Celebrate Bihar Security Gateway • Automated Security Dispatch
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    return { success: true, messageId: info.messageId };
+  } catch (error) {
+    console.error("Error sending 2FA OTP email:", error);
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+/**
+ * 🚨 Send Admin Brute-Force Alert Email
+ */
+export async function sendAdminSecurityAlertEmail(
+  toEmail: string,
+  details: { ip: string; username: string; timestamp: string; attemptCount: number }
+) {
+  const transporter = getTransporter();
+  if (!transporter) return { success: false };
+
+  const mailOptions = {
+    from: `"Celebrate Bihar Security Alert" <${process.env.SMTP_USER}>`,
+    to: toEmail,
+    subject: `🚨 [SECURITY ALERT] Multiple Failed Admin Login Attempts Detected`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; background-color: #ffffff; border: 2px solid #dc2626; border-radius: 16px; overflow: hidden;">
+        <div style="background-color: #dc2626; padding: 24px; text-align: center; color: #ffffff;">
+          <h2 style="margin: 0; font-size: 20px;">🛡️ Security Alert: Rate-Limit Lockout Triggered</h2>
+        </div>
+        <div style="padding: 24px; color: #1e293b; font-size: 14px; line-height: 1.6;">
+          <p>The Celebrate Bihar Admin Gateway has blocked an IP address after <strong>${details.attemptCount} consecutive failed login attempts</strong>.</p>
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin: 16px 0;">
+            <p style="margin: 4px 0;"><strong>Targeted Account:</strong> ${details.username}</p>
+            <p style="margin: 4px 0;"><strong>Client IP:</strong> ${details.ip}</p>
+            <p style="margin: 4px 0;"><strong>Timestamp:</strong> ${details.timestamp}</p>
+            <p style="margin: 4px 0;"><strong>Action:</strong> IP address locked out for 15 minutes.</p>
+          </div>
+          <p style="color: #64748b; font-size: 12px; margin: 0;">If this was you, please wait 15 minutes or verify your password.</p>
+        </div>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    return { success: true };
+  } catch (err) {
+    console.error("Error sending security alert email:", err);
+    return { success: false };
   }
 }

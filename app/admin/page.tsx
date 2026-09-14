@@ -21,6 +21,12 @@ import {
   Send,
   Trash2,
   Unlock,
+  Lock,
+  Shield,
+  ShieldAlert,
+  KeyRound,
+  Mail,
+  ArrowLeft,
   Plus,
   FileText,
   Wrench,
@@ -73,13 +79,38 @@ const INITIAL_ACTIVE_HUBS = [
 ];
 
 export default function AdminOperationsDashboard() {
-  // Authentication State
+  // Authentication & 2FA State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [passkeyInput, setPasskeyInput] = useState<string>("");
+  const [usernameInput, setUsernameInput] = useState<string>("admin");
+  const [passwordInput, setPasswordInput] = useState<string>("");
   const [authError, setAuthError] = useState<string>("");
+  const [authSuccessMsg, setAuthSuccessMsg] = useState<string>("");
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
-  const [showPasskey, setShowPasskey] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
+
+  // 2-Factor Authentication Flow State
+  const [is2FAPending, setIs2FAPending] = useState<boolean>(false);
+  const [tempSessionId, setTempSessionId] = useState<string>("");
+  const [otpInput, setOtpInput] = useState<string>("");
+  const [maskedEmail, setMaskedEmail] = useState<string>("");
+  const [otpCountdown, setOtpCountdown] = useState<number>(300);
+  const [isResendingOtp, setIsResendingOtp] = useState<boolean>(false);
+
+  // Active Admin Profile & Role
+  const [currentUser, setCurrentUser] = useState<{
+    username: string;
+    role: "SUPER_ADMIN" | "OPERATIONS_DISPATCHER";
+    displayName: string;
+  } | null>(null);
+
+  // Rate Limiting & Lockout Status
+  const [isLocked, setIsLocked] = useState<boolean>(false);
+  const [lockoutSeconds, setLockoutSeconds] = useState<number>(0);
+  const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
+
+  // Inactivity Auto-Lock Notice
+  const [inactivityNotice, setInactivityNotice] = useState<boolean>(false);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<"bookings" | "dispatch" | "services" | "consultations" | "analytics">("bookings");
@@ -166,13 +197,116 @@ export default function AdminOperationsDashboard() {
   const [newSpecialNotes, setNewSpecialNotes] = useState<string>("");
   const [isCreatingBooking, setIsCreatingBooking] = useState<boolean>(false);
 
-  // Check saved passkey on mount
-  useEffect(() => {
-    const saved = localStorage.getItem("cb_admin_auth");
-    if (saved === "valid_bihar_admin_session") {
-      setIsAuthenticated(true);
+  // Helper to obtain authenticated headers for admin operations
+  const getAuthHeaders = useCallback(() => {
+    const token = typeof window !== "undefined"
+      ? (localStorage.getItem("cb_admin_token") || sessionStorage.getItem("cb_admin_token") || "")
+      : "";
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { "Authorization": `Bearer ${token}`, "x-admin-token": token } : {}),
+    };
+  }, []);
+
+  // Secure Logout function
+  const handleLogout = useCallback((reason?: "inactivity" | "manual") => {
+    localStorage.removeItem("cb_admin_token");
+    localStorage.removeItem("cb_admin_user");
+    localStorage.removeItem("cb_admin_auth");
+    sessionStorage.removeItem("cb_admin_token");
+    sessionStorage.removeItem("cb_admin_user");
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    setIs2FAPending(false);
+    setPasswordInput("");
+    setOtpInput("");
+
+    fetch("/api/admin/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    }).catch(() => {});
+
+    if (reason === "inactivity") {
+      setInactivityNotice(true);
+      setAuthError("🔒 Session timed out after 15 minutes of inactivity. Please re-authenticate.");
     }
   }, []);
+
+  // Check saved session on mount and restore state
+  useEffect(() => {
+    const token = localStorage.getItem("cb_admin_token") || sessionStorage.getItem("cb_admin_token");
+    const storedUser = localStorage.getItem("cb_admin_user") || sessionStorage.getItem("cb_admin_user");
+    if (token) {
+      if (storedUser) {
+        try {
+          setCurrentUser(JSON.parse(storedUser));
+        } catch {}
+      }
+      setIsAuthenticated(true);
+      // Validate session with server in background
+      fetch("/api/admin/auth", {
+        headers: { "Authorization": `Bearer ${token}` },
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.authenticated && data.user) {
+            setCurrentUser(data.user);
+          } else if (data.authenticated === false) {
+            handleLogout();
+          }
+        })
+        .catch(() => {});
+    }
+  }, [handleLogout]);
+
+  // 15-Minute Inactivity Auto-Lock Tracker
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let timeoutId: NodeJS.Timeout;
+    const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 minutes
+
+    const resetInactivityTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        handleLogout("inactivity");
+      }, INACTIVITY_LIMIT_MS);
+    };
+
+    const events = ["mousedown", "mousemove", "keydown", "scroll", "touchstart"];
+    events.forEach((evt) => window.addEventListener(evt, resetInactivityTimer, { passive: true }));
+    resetInactivityTimer();
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach((evt) => window.removeEventListener(evt, resetInactivityTimer));
+    };
+  }, [isAuthenticated, handleLogout]);
+
+  // 2FA OTP Countdown Timer
+  useEffect(() => {
+    if (!is2FAPending || otpCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCountdown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [is2FAPending, otpCountdown]);
+
+  // Lockout Countdown Timer
+  useEffect(() => {
+    if (!isLocked || lockoutSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutSeconds((prev) => {
+        if (prev <= 1) {
+          setIsLocked(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isLocked, lockoutSeconds]);
 
   // Fetch all live data (Bookings, Consultations, Services Catalog, Technicians)
   const fetchData = useCallback(async () => {
@@ -180,9 +314,14 @@ export default function AdminOperationsDashboard() {
     try {
       // 1. Fetch Bookings & Real Metrics
       const res = await fetch("/api/admin/bookings", {
-        headers: { "x-admin-key": "bihar-admin-2025" },
+        headers: getAuthHeaders(),
         cache: "no-store",
       });
+      if (res.status === 401) {
+        handleLogout();
+        setAuthError("Session expired. Please log in again.");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setBookings(data.bookings || []);
@@ -201,7 +340,10 @@ export default function AdminOperationsDashboard() {
       }
 
       // 3. Fetch Technicians
-      const techRes = await fetch("/api/technicians", { cache: "no-store" });
+      const techRes = await fetch("/api/technicians", {
+        headers: getAuthHeaders(),
+        cache: "no-store"
+      });
       if (techRes.ok) {
         const techData = await techRes.json();
         if (techData.technicians) {
@@ -213,7 +355,7 @@ export default function AdminOperationsDashboard() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [getAuthHeaders, handleLogout]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -230,36 +372,158 @@ export default function AdminOperationsDashboard() {
     return () => clearInterval(interval);
   }, [isAuthenticated, autoRefresh, fetchData]);
 
-  // Handle Passkey Login
-  const handleLogin = (e: React.FormEvent) => {
+  // Complete Authentication Helper
+  const completeAuth = (token: string, user?: any) => {
+    if (rememberMe) {
+      localStorage.setItem("cb_admin_token", token);
+      if (user) localStorage.setItem("cb_admin_user", JSON.stringify(user));
+    } else {
+      sessionStorage.setItem("cb_admin_token", token);
+      if (user) sessionStorage.setItem("cb_admin_user", JSON.stringify(user));
+    }
+    if (user) setCurrentUser(user);
+    setIsAuthenticated(true);
+    setIs2FAPending(false);
+    setOtpInput("");
+    setPasswordInput("");
+    setInactivityNotice(false);
+    setAuthError("");
+    setAuthSuccessMsg("");
+  };
+
+  // STEP 1: Handle Initial Username + Password Submission
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!passwordInput.trim()) {
+      setAuthError("Please enter your administrative password / passkey.");
+      return;
+    }
+
+    setIsAuthenticating(true);
+    setAuthError("");
+    setAuthSuccessMsg("");
+
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "login",
+          username: usernameInput.trim(),
+          password: passwordInput.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429) {
+        setIsLocked(true);
+        setLockoutSeconds(data.remainingLockSeconds || 900);
+        setAuthError(data.error || "🚫 Too many failed attempts. Temporary security lockout activated.");
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        setAuthError(data.error || "Invalid credentials. Access Denied.");
+        if (data.remainingAttempts !== undefined) {
+          setRemainingAttempts(data.remainingAttempts);
+        }
+        return;
+      }
+
+      if (data.requires2FA) {
+        setIs2FAPending(true);
+        setTempSessionId(data.tempSessionId);
+        setMaskedEmail(data.maskedEmail);
+        setOtpCountdown(300);
+        setAuthSuccessMsg(`A 6-digit verification code has been dispatched to ${data.maskedEmail}.`);
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      } else {
+        completeAuth(data.token, data.user);
+      }
+    } catch (err: any) {
+      setAuthError("Failed to reach authentication gateway. Please check connection.");
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  // STEP 2: Handle 2FA OTP Code Verification Submission
+  const handleVerify2FASubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpInput.trim() || otpInput.trim().length !== 6) {
+      setAuthError("Please enter the 6-digit verification code from your email.");
+      return;
+    }
+
     setIsAuthenticating(true);
     setAuthError("");
 
-    setTimeout(() => {
-      const trimmed = passkeyInput.trim().toLowerCase();
-      if (
-        trimmed === "bihar2026" ||
-        trimmed === "bihar2025" ||
-        trimmed === "celebratebihar2025" ||
-        trimmed === "admin" ||
-        trimmed === "bihar"
-      ) {
-        setIsAuthenticated(true);
-        if (rememberMe) {
-          localStorage.setItem("cb_admin_auth", "valid_bihar_admin_session");
-        }
-      } else {
-        setAuthError("Invalid management passkey. Please check credentials.");
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "verify_2fa",
+          tempSessionId,
+          otp: otpInput.trim(),
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.status === 429) {
+        setIsLocked(true);
+        setLockoutSeconds(data.remainingLockSeconds || 900);
+        setAuthError(data.error || "🚫 Rate limit exceeded. Account temporarily locked.");
+        return;
       }
+
+      if (!res.ok || !data.success) {
+        setAuthError(data.error || "Invalid verification code. Please try again.");
+        if (data.remainingAttempts !== undefined) {
+          setRemainingAttempts(data.remainingAttempts);
+        }
+        return;
+      }
+
+      completeAuth(data.token, data.user);
+    } catch (err) {
+      setAuthError("Failed to verify code. Please check connection.");
+    } finally {
       setIsAuthenticating(false);
-    }, 400);
+    }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("cb_admin_auth");
-    setIsAuthenticated(false);
-    setPasskeyInput("");
+  // Resend 2FA OTP Code
+  const handleResend2FA = async () => {
+    setIsResendingOtp(true);
+    setAuthError("");
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "resend_2fa",
+          username: usernameInput,
+          role: currentUser?.role || "SUPER_ADMIN",
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTempSessionId(data.tempSessionId);
+        setOtpCountdown(300);
+        setAuthSuccessMsg("A fresh 6-digit code has been dispatched to admin email.");
+      } else {
+        setAuthError(data.error || "Failed to resend code.");
+      }
+    } catch {
+      setAuthError("Failed to resend code.");
+    } finally {
+      setIsResendingOtp(false);
+    }
   };
 
   const copyToClipboard = (text: string, id: string) => {
@@ -273,10 +537,7 @@ export default function AdminOperationsDashboard() {
     try {
       const res = await fetch("/api/admin/bookings", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": "bihar-admin-2025",
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ id: bookingId, status: newStatus }),
       });
       const data = await res.json();
@@ -311,10 +572,7 @@ export default function AdminOperationsDashboard() {
 
       const res = await fetch("/api/admin/bookings", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": "bihar-admin-2025",
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           id: assignTechBooking.id,
           status: "TECHNICIAN_ASSIGNED",
@@ -361,7 +619,7 @@ export default function AdminOperationsDashboard() {
     try {
       const res = await fetch("/api/technicians", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           name: techNameInput.trim(),
           phone: techPhoneInput.trim(),
@@ -389,6 +647,7 @@ export default function AdminOperationsDashboard() {
     try {
       const res = await fetch(`/api/technicians?id=${encodeURIComponent(id)}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (data.success) {
@@ -406,7 +665,7 @@ export default function AdminOperationsDashboard() {
     try {
       const res = await fetch(`/api/admin/bookings?id=${encodeURIComponent(bookingId)}`, {
         method: "DELETE",
-        headers: { "x-admin-key": "bihar-admin-2025" },
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (data.success) {
@@ -457,10 +716,7 @@ export default function AdminOperationsDashboard() {
 
       const res = await fetch("/api/admin/bookings", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-admin-key": "bihar-admin-2025",
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
 
@@ -501,7 +757,7 @@ export default function AdminOperationsDashboard() {
         // Edit existing
         const res = await fetch("/api/services", {
           method: "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             id: editingService.id,
             name: serviceName.trim(),
@@ -516,12 +772,14 @@ export default function AdminOperationsDashboard() {
           setShowAddServiceModal(false);
           setEditingService(null);
           fetchData();
+        } else {
+          alert(data.error || "Failed to update service. Super Admin permissions required.");
         }
       } else {
         // Add new service
         const res = await fetch("/api/services", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: getAuthHeaders(),
           body: JSON.stringify({
             categoryId: serviceCategoryId,
             name: serviceName.trim(),
@@ -535,6 +793,8 @@ export default function AdminOperationsDashboard() {
         if (data.success) {
           setShowAddServiceModal(false);
           fetchData();
+        } else {
+          alert(data.error || "Failed to add service. Super Admin permissions required.");
         }
       }
     } catch (err) {
@@ -551,10 +811,13 @@ export default function AdminOperationsDashboard() {
     try {
       const res = await fetch(`/api/services?id=${encodeURIComponent(serviceId)}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
       const data = await res.json();
       if (data.success) {
         fetchData();
+      } else {
+        alert(data.error || "Failed to delete service. Super Admin permissions required.");
       }
     } catch (err) {
       console.error("Delete service error:", err);
@@ -770,7 +1033,7 @@ export default function AdminOperationsDashboard() {
   };
 
   // ==========================================
-  // UN-AUTHENTICATED: LOGIN VIEW (Monochrome + Blue Accent matching Hero)
+  // UN-AUTHENTICATED: MULTI-ROLE 2FA LOGIN VIEW (Banking-Grade Security Theme)
   // ==========================================
   if (!isAuthenticated) {
     return (
@@ -798,111 +1061,347 @@ export default function AdminOperationsDashboard() {
           </div>
         </header>
 
-        {/* Main Login Box */}
-        <main className="max-w-md w-full mx-auto px-4 py-12 z-10">
+        {/* Main Login Card */}
+        <main className="max-w-lg w-full mx-auto px-4 py-10 z-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+            transition={{ duration: 0.35 }}
             className="p-7 sm:p-9 rounded-3xl bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border border-zinc-200/90 dark:border-zinc-800/90 shadow-[0_8px_30px_rgb(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] space-y-6"
           >
-            {/* Trust Pill */}
+            {/* Header Badge */}
             <div className="text-center space-y-3">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-900/60 text-blue-700 dark:text-blue-300 text-[11px] font-bold">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-400" />
                 </span>
-                <span>Central Command & Dispatch</span>
+                <span>Central Command & 2FA Gate</span>
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-950 dark:text-white">
-                Admin Console
+                {is2FAPending ? "Two-Factor Verification" : "Admin Operations Console"}
               </h1>
-              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 font-normal max-w-xs mx-auto">
-                Secure operations desk for customer bookings, technician dispatches, and Bihar network expansion.
+              <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 font-normal max-w-sm mx-auto">
+                {is2FAPending
+                  ? `Enter the 6-digit cryptographic security code dispatched to ${maskedEmail || "your registered admin email"}.`
+                  : "Enterprise-grade operations portal for customer dispatches, live appliance bookings, and technician routing across Bihar."}
               </p>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">
-                  Management Passkey
-                </label>
-                <div className="relative">
+            {/* Inactivity Notification Banner */}
+            {inactivityNotice && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2.5">
+                <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Session locked due to 15 minutes of inactivity. Please re-authenticate.</span>
+              </div>
+            )}
+
+            {/* Lockout Notification Banner */}
+            {isLocked && (
+              <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900/70 text-xs text-rose-800 dark:text-rose-200 space-y-2">
+                <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-300">
+                  <ShieldAlert className="w-4 h-4 text-rose-600 flex-shrink-0 animate-bounce" />
+                  <span>Security Lockout Activated</span>
+                </div>
+                <p className="text-[11px] leading-relaxed text-rose-600 dark:text-rose-300">
+                  Multiple invalid authentication attempts detected. Automated security alert sent to system administrator.
+                </p>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/40 font-mono font-bold text-[11px] text-rose-700 dark:text-rose-300">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>
+                    Lockout expires in: {Math.floor(lockoutSeconds / 60)}m {(lockoutSeconds % 60).toString().padStart(2, "0")}s
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* General Auth Error */}
+            {authError && !isLocked && (
+              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            {/* Success / Status Message */}
+            {authSuccessMsg && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                <span>{authSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* STEP 1: CREDENTIAL AUTHENTICATION */}
+            {!is2FAPending ? (
+              <form onSubmit={handleLoginSubmit} className="space-y-4">
+                {/* Role Switcher */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">
+                    Select Access Role
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => {
+                        setUsernameInput("admin");
+                        setAuthError("");
+                      }}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                        usernameInput === "admin"
+                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/50 dark:border-blue-500 shadow-2xs"
+                          : "border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
+                        <span>👑 Super Admin</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Full Catalog, Security & Operations
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isLocked}
+                      onClick={() => {
+                        setUsernameInput("dispatcher");
+                        setAuthError("");
+                      }}
+                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                        usernameInput === "dispatcher"
+                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/50 dark:border-blue-500 shadow-2xs"
+                          : "border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
+                        <span>🚚 Fleet Dispatcher</span>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                        Bookings, Techs & WhatsApp Desk
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Username Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">
+                    Admin Username
+                  </label>
                   <input
-                    type={showPasskey ? "text" : "password"}
-                    value={passkeyInput}
-                    onChange={(e) => setPasskeyInput(e.target.value)}
-                    placeholder="Enter passkey (e.g. bihar2026)"
-                    className="w-full px-4 py-3 text-sm rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 font-mono transition-all"
+                    type="text"
+                    disabled={isLocked}
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    placeholder="e.g. admin or dispatcher"
+                    className="w-full px-4 py-3 text-sm rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 font-mono transition-all disabled:opacity-50"
+                  />
+                </div>
+
+                {/* Password Input */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+                      Administrative Password
+                    </label>
+                    {remainingAttempts !== null && remainingAttempts < 5 && (
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">
+                        {remainingAttempts} attempts remaining
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      disabled={isLocked}
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder="Enter administrative password"
+                      className="w-full px-4 py-3 text-sm rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 font-mono transition-all disabled:opacity-50"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-xs font-semibold cursor-pointer p-1"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Options & Quick Preset */}
+                <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500 bg-zinc-50 dark:bg-zinc-950"
+                    />
+                    <span>Remember Session</span>
+                  </label>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsernameInput("admin");
+                        setPasswordInput("Bihar@Admin2026!");
+                        setAuthError("");
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Admin Fill</span>
+                    </button>
+                    <span className="text-zinc-300 dark:text-zinc-700">•</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsernameInput("dispatcher");
+                        setPasswordInput("Bihar@Dispatch2026!");
+                        setAuthError("");
+                      }}
+                      className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Dispatch Fill</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={isAuthenticating || isLocked}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-full font-bold text-sm text-white dark:text-zinc-950 bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-100 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {isAuthenticating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                      <span>Verifying Credentials & Dispatching 2FA...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-4 h-4 text-blue-500 dark:text-blue-600" />
+                      <span>Authenticate & Request 2FA OTP</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              /* STEP 2: 2FA OTP VERIFICATION */
+              <form onSubmit={handleVerify2FASubmit} className="space-y-4">
+                {/* 2FA Visual Indicator */}
+                <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-base shadow-xs">
+                      <KeyRound className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-zinc-900 dark:text-white">
+                        Admin Email 2FA
+                      </div>
+                      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">
+                        {maskedEmail || "celebratebiharserviceprovider@gmail.com"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-400 font-semibold">
+                      Validity
+                    </div>
+                    <div className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {Math.floor(otpCountdown / 60)}:{(otpCountdown % 60).toString().padStart(2, "0")}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6-Digit OTP Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block text-center">
+                    Enter 6-Digit Security Code
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    disabled={isLocked}
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="••••••"
+                    className="w-full px-4 py-3.5 text-2xl text-center tracking-[0.5em] font-mono font-black rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-300 dark:placeholder:text-zinc-700 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 transition-all"
                     autoFocus
                   />
+                  <p className="text-[11px] text-center text-zinc-500 dark:text-zinc-400">
+                    Check your spam/junk folder if not received in primary inbox.
+                  </p>
+                </div>
+
+                {/* Actions: Resend + Back */}
+                <div className="flex items-center justify-between text-xs pt-1">
                   <button
                     type="button"
-                    onClick={() => setShowPasskey(!showPasskey)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 text-xs font-semibold cursor-pointer p-1"
+                    onClick={() => {
+                      setIs2FAPending(false);
+                      setOtpInput("");
+                      setAuthError("");
+                    }}
+                    className="inline-flex items-center gap-1 font-bold text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white transition-colors cursor-pointer"
                   >
-                    {showPasskey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span>Back to Login</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isResendingOtp || otpCountdown > 240}
+                    onClick={handleResend2FA}
+                    className="inline-flex items-center gap-1 font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline cursor-pointer"
+                  >
+                    {isResendingOtp ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Mail className="w-3.5 h-3.5" />
+                    )}
+                    <span>{otpCountdown > 240 ? `Resend (${otpCountdown - 240}s)` : "Resend Code"}</span>
                   </button>
                 </div>
-              </div>
 
-              {authError && (
-                <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
-                  <span>{authError}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 pt-1">
-                <label className="flex items-center gap-2 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="rounded border-zinc-300 dark:border-zinc-700 text-blue-600 focus:ring-blue-500 bg-zinc-50 dark:bg-zinc-950"
-                  />
-                  <span>Remember Session</span>
-                </label>
-
+                {/* Submit 2FA Button */}
                 <button
-                  type="button"
-                  onClick={() => {
-                    setPasskeyInput("bihar2026");
-                    setAuthError("");
-                  }}
-                  className="text-blue-600 dark:text-blue-400 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                  type="submit"
+                  disabled={isAuthenticating || isLocked || otpInput.length !== 6}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-full font-bold text-sm text-white dark:text-zinc-950 bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-100 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Fill Demo Passkey</span>
+                  {isAuthenticating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                      <span>Verifying Security Code...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Unlock className="w-4 h-4 text-blue-500 dark:text-blue-600" />
+                      <span>Verify Code & Unlock Console</span>
+                    </>
+                  )}
                 </button>
-              </div>
+              </form>
+            )}
 
-              <button
-                type="submit"
-                disabled={isAuthenticating}
-                className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-full font-bold text-sm text-white dark:text-zinc-950 bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-100 shadow-sm hover:shadow hover:-translate-y-0.5 active:translate-y-0 transition-all cursor-pointer disabled:opacity-75"
-              >
-                {isAuthenticating ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
-                    <span>Verifying Access...</span>
-                  </>
-                ) : (
-                  <>
-                    <Unlock className="w-4 h-4 text-blue-500 dark:text-blue-600" />
-                    <span>Unlock Dashboard</span>
-                  </>
-                )}
-              </button>
-            </form>
+            {/* Security Guarantee Pill */}
+            <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center gap-2 text-[10px] text-zinc-400 dark:text-zinc-500">
+              <Shield className="w-3 h-3 text-emerald-500" />
+              <span>HMAC SHA-256 Tokens • 15m Auto-Lock • Rate Limiting Active</span>
+            </div>
           </motion.div>
         </main>
 
         {/* Footer */}
         <footer className="max-w-6xl w-full mx-auto text-center text-xs text-zinc-400 dark:text-zinc-500 py-6 border-t border-zinc-200/80 dark:border-zinc-800/80">
-          Celebrate Bihar • Corporate-Grade Appliance Care & Turnkey Management Desk
+          Celebrate Bihar • Central Command & Operational Security Framework • {new Date().getFullYear()}
         </footer>
       </div>
     );
@@ -925,20 +1424,33 @@ export default function AdminOperationsDashboard() {
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
           {/* Left Brand & Live DB Indicator */}
-          <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex items-center gap-3 sm:gap-4">
             <Link href="/" className="flex items-center gap-2 group flex-shrink-0">
               <span className="text-xl sm:text-2xl font-black tracking-tight text-zinc-950 dark:text-white group-hover:opacity-90 transition-opacity">
                 Celebrate <span className="text-blue-600 dark:text-blue-400">Bihar</span>
               </span>
             </Link>
 
-            <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 text-xs font-bold shadow-2xs">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span>Admin Console</span>
+            {/* Role Badge */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 border border-zinc-200 dark:border-zinc-700 text-xs font-bold shadow-2xs">
+              {currentUser?.role === "SUPER_ADMIN" ? (
+                <>
+                  <span className="text-amber-500">👑</span>
+                  <span>Super Admin</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-blue-500">🚚</span>
+                  <span>Dispatcher</span>
+                </>
+              )}
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono hidden sm:inline">
+                ({currentUser?.username || "admin"})
+              </span>
             </div>
 
             {/* Live Dual-Cloud Sync Pill */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900/60 text-xs font-bold shadow-2xs">
+            <div className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50/80 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-900/60 text-xs font-bold shadow-2xs">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600 dark:bg-blue-400" />
@@ -947,11 +1459,20 @@ export default function AdminOperationsDashboard() {
                 {dbEngine === "HYBRID_DUAL_CLOUD"
                   ? "Dual-Cloud Sync"
                   : dbEngine === "SUPABASE"
-                  ? "Supabase"
-                  : dbEngine === "FIRESTORE"
-                  ? "Firestore"
-                  : "Local Store"}
+                    ? "Supabase"
+                    : dbEngine === "FIRESTORE"
+                      ? "Firestore"
+                      : "Local Store"}
               </span>
+            </div>
+
+            {/* 15-Minute Auto-Lock Indicator */}
+            <div
+              className="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50"
+              title="Session will automatically lock after 15 minutes of inactivity"
+            >
+              <Shield className="w-3 h-3" />
+              <span>15m Auto-Lock</span>
             </div>
           </div>
 
@@ -982,7 +1503,7 @@ export default function AdminOperationsDashboard() {
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
-            {/* New Phone Order Button (styled identically to homepage Book Now) */}
+            {/* New Phone Order Button */}
             <button
               type="button"
               onClick={() => setShowNewBookingModal(true)}
@@ -997,7 +1518,7 @@ export default function AdminOperationsDashboard() {
             {/* Logout */}
             <button
               type="button"
-              onClick={handleLogout}
+              onClick={() => handleLogout("manual")}
               className="p-2 rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-all cursor-pointer"
               title="Lock Admin Console"
             >
@@ -1142,11 +1663,10 @@ export default function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab("bookings")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === "bookings"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${activeTab === "bookings"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
+                }`}
             >
               <FileText className="w-3.5 h-3.5" />
               <span>Customer Bookings</span>
@@ -1158,11 +1678,10 @@ export default function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab("dispatch")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === "dispatch"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${activeTab === "dispatch"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
+                }`}
             >
               <UserCheck className="w-3.5 h-3.5" />
               <span>Technician Fleet</span>
@@ -1174,11 +1693,10 @@ export default function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab("services")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === "services"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${activeTab === "services"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
+                }`}
             >
               <Wrench className="w-3.5 h-3.5" />
               <span>Service Catalog & Expansion</span>
@@ -1190,11 +1708,10 @@ export default function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab("consultations")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === "consultations"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${activeTab === "consultations"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
+                }`}
             >
               <Building2 className="w-3.5 h-3.5" />
               <span>B2B Inquiries</span>
@@ -1206,11 +1723,10 @@ export default function AdminOperationsDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab("analytics")}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                activeTab === "analytics"
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${activeTab === "analytics"
                   ? "bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 shadow-xs"
                   : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white"
-              }`}
+                }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
               <span>Regional Insights</span>
@@ -1755,11 +2271,10 @@ export default function AdminOperationsDashboard() {
                       key={dist}
                       type="button"
                       onClick={() => toggleDistrictHub(dist)}
-                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-                        isActive
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${isActive
                           ? "bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 border-zinc-950 dark:border-white shadow-2xs font-bold"
                           : "bg-zinc-50 dark:bg-zinc-950 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:border-zinc-400"
-                      }`}
+                        }`}
                     >
                       {isActive ? "✓ " : "+ "}
                       {dist}

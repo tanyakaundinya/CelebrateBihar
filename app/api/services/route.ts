@@ -5,6 +5,7 @@ import {
   updateServiceItemAsync,
   deleteServiceItemAsync,
 } from "@/lib/servicesStore";
+import { verifyAdminAuth } from "@/lib/auth/adminAuth";
 
 export async function GET() {
   try {
@@ -24,6 +25,13 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req, "SUPER_ADMIN")) {
+      return NextResponse.json(
+        { success: false, error: "Access Denied. Only Super Administrators can add services to catalog." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { categoryId, name, shortDesc, basePrice, pricingModel, features, group, popular } = body;
 
@@ -64,6 +72,13 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req, "SUPER_ADMIN")) {
+      return NextResponse.json(
+        { success: false, error: "Access Denied. Only Super Administrators can update service catalog." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { id, ...updates } = body;
 
@@ -100,6 +115,13 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    if (!verifyAdminAuth(req, "SUPER_ADMIN")) {
+      return NextResponse.json(
+        { success: false, error: "Access Denied. Only Super Administrators can remove services from catalog." },
+        { status: 403 }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
 

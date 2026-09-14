@@ -123,7 +123,7 @@ export const BookingForm: React.FC<BookingFormProps> = ({
           if (names.length > 0) setDynamicServiceNames(names);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Bihar focus districts list
@@ -1439,9 +1439,8 @@ export const BookingForm: React.FC<BookingFormProps> = ({
                     <label className="block text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 mb-1">
                       Mobile Number (For Technician Call) *
                     </label>
-                    <div className={`relative flex items-center rounded-xl border ${
-                      errors.phone ? "border-red-500 bg-red-50/20" : "border-zinc-200 dark:border-zinc-800"
-                    } bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-zinc-900 dark:focus-within:ring-white transition-all overflow-hidden`}>
+                    <div className={`relative flex items-center rounded-xl border ${errors.phone ? "border-red-500 bg-red-50/20" : "border-zinc-200 dark:border-zinc-800"
+                      } bg-white dark:bg-zinc-950 focus-within:ring-2 focus-within:ring-zinc-900 dark:focus-within:ring-white transition-all overflow-hidden`}>
                       {/* Prefix */}
                       <div className="pl-3.5 pr-2 py-2.5 flex items-center gap-1.5 border-r border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 select-none">
                         <Phone className="w-3.5 h-3.5 text-zinc-400" />
