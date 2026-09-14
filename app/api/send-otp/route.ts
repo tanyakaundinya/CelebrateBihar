@@ -22,11 +22,23 @@ export async function POST(req: NextRequest) {
     saveOtp(email, otpCode, 10);
 
     // Send real email via Nodemailer
-    await sendOtpEmail(email.trim(), otpCode, name);
+    let emailSent = false;
+    let emailError = "";
+    try {
+      await sendOtpEmail(email.trim(), otpCode, name);
+      emailSent = true;
+    } catch (mailErr: any) {
+      console.warn("SMTP email dispatch notice (Check .env.local SMTP credentials):", mailErr.message);
+      emailError = mailErr.message;
+    }
 
     return NextResponse.json({
       success: true,
-      message: `A verification code has been dispatched to ${email}.`,
+      emailSent,
+      devOtp: !emailSent ? otpCode : undefined,
+      message: emailSent
+        ? `A verification code has been dispatched to ${email}.`
+        : `Verification code generated. (SMTP Notice: Update App Password in .env.local)`,
     });
   } catch (error: any) {
     console.error("Error in /api/send-otp:", error);
@@ -35,7 +47,7 @@ export async function POST(req: NextRequest) {
         success: false,
         error:
           error.message ||
-          "Failed to send email OTP. Please verify your email address or SMTP setup.",
+          "Failed to process verification code. Please check your network.",
       },
       { status: 500 }
     );

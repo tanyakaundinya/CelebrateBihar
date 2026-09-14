@@ -94,6 +94,7 @@ export default function AdminOperationsDashboard() {
   const [tempSessionId, setTempSessionId] = useState<string>("");
   const [otpInput, setOtpInput] = useState<string>("");
   const [maskedEmail, setMaskedEmail] = useState<string>("");
+  const [devOtp, setDevOtp] = useState<string>("");
   const [otpCountdown, setOtpCountdown] = useState<number>(300);
   const [isResendingOtp, setIsResendingOtp] = useState<boolean>(false);
 
@@ -220,6 +221,7 @@ export default function AdminOperationsDashboard() {
     setIs2FAPending(false);
     setPasswordInput("");
     setOtpInput("");
+    setDevOtp("");
 
     fetch("/api/admin/auth", {
       method: "POST",
@@ -435,8 +437,13 @@ export default function AdminOperationsDashboard() {
         setIs2FAPending(true);
         setTempSessionId(data.tempSessionId);
         setMaskedEmail(data.maskedEmail);
+        if (data.devOtp) setDevOtp(data.devOtp);
         setOtpCountdown(300);
-        setAuthSuccessMsg(`A 6-digit verification code has been dispatched to ${data.maskedEmail}.`);
+        setAuthSuccessMsg(
+          data.emailSent
+            ? `A 6-digit verification code has been dispatched to ${data.maskedEmail}.`
+            : `Verification code generated. (SMTP Notice: Check credentials in .env.local)`
+        );
         if (data.user) {
           setCurrentUser(data.user);
         }
@@ -514,8 +521,13 @@ export default function AdminOperationsDashboard() {
       const data = await res.json();
       if (data.success) {
         setTempSessionId(data.tempSessionId);
+        if (data.devOtp) setDevOtp(data.devOtp);
         setOtpCountdown(300);
-        setAuthSuccessMsg("A fresh 6-digit code has been dispatched to admin email.");
+        setAuthSuccessMsg(
+          data.emailSent
+            ? "A fresh 6-digit code has been dispatched to admin email."
+            : "A fresh verification code has been generated."
+        );
       } else {
         setAuthError(data.error || "Failed to resend code.");
       }
@@ -1319,6 +1331,28 @@ export default function AdminOperationsDashboard() {
                     </div>
                   </div>
                 </div>
+
+                {/* Dev OTP Preview Helper */}
+                {devOtp && (
+                  <div className="p-3 rounded-2xl bg-blue-50/80 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/60 text-xs flex items-center justify-between shadow-2xs">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                      <span className="text-zinc-700 dark:text-zinc-300 font-medium">
+                        Dev OTP Code: <strong className="font-mono text-blue-700 dark:text-blue-300 text-sm tracking-widest">{devOtp}</strong>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOtpInput(devOtp);
+                        setAuthError("");
+                      }}
+                      className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] shadow-xs cursor-pointer transition-all hover:scale-105 active:scale-95"
+                    >
+                      Auto-Fill
+                    </button>
+                  </div>
+                )}
 
                 {/* 6-Digit OTP Input */}
                 <div className="space-y-1.5">

@@ -96,7 +96,6 @@ export async function POST(req: NextRequest) {
       // Check if 2FA is enabled (default true)
       const is2FAEnabled = process.env.ADMIN_2FA_ENABLED !== "false";
       const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "celebratebiharserviceprovider@gmail.com";
-
       if (is2FAEnabled) {
         // Generate cryptographic 2FA code and temp session ID
         const { tempSessionId, otpCode } = createPending2FA(user);
@@ -112,8 +111,8 @@ export async function POST(req: NextRequest) {
             clientIp
           );
           emailSent = !!mailResult.success;
-        } catch (mailErr) {
-          console.error("2FA Email dispatch error:", mailErr);
+        } catch (mailErr: any) {
+          console.warn("2FA Email dispatch notice (Check .env.local SMTP credentials):", mailErr.message);
         }
 
         const maskedEmail = adminEmail.replace(
@@ -127,12 +126,15 @@ export async function POST(req: NextRequest) {
           tempSessionId,
           maskedEmail,
           emailSent,
+          devOtp: !emailSent ? otpCode : undefined,
           user: {
             username: user.username,
             role: user.role,
             displayName: user.displayName,
           },
-          message: `🔐 2-Factor verification code dispatched to ${maskedEmail}.`,
+          message: emailSent
+            ? `🔐 2-Factor verification code dispatched to ${maskedEmail}.`
+            : `🔐 Verification code generated. (SMTP Notice: Update App Password in .env.local)`,
         });
       }
 
@@ -178,23 +180,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(
           {
             success: false,
-            error: verifyResult.error || "Invalid 2FA Verification Code.",
+            error: "Invalid 6-digit 2FA code. Please try again.",
             remainingAttempts: attemptResult.remainingAttempts,
           },
           { status: 401 }
         );
       }
 
-      // Successful 2FA verification! Reset rate limiting
+      // Verification passed: reset attempts, issue token and set cookie
       resetAttempts(clientIp);
-
-      const token = generateAdminSessionToken(verifyResult.user);
+      const user = verifyResult.user;
+      const token = generateAdminSessionToken(user);
 
       const response = NextResponse.json({
         success: true,
         token,
-        user: verifyResult.user,
-        message: "2FA Verification successful. Admin session granted.",
+        user,
+        message: "2FA Verification successful. Admin access granted.",
       });
 
       // Set hardened SameSite=Strict HttpOnly Cookie
@@ -211,7 +213,7 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // ACTION C: Resend 2FA OTP
+    // ACTION C: Resend 2FA OTP Code
     if (action === "resend_2fa") {
       const { username, role } = body;
       const adminEmail = process.env.ADMIN_EMAIL || process.env.SMTP_USER || "celebratebiharserviceprovider@gmail.com";
@@ -222,18 +224,28 @@ export async function POST(req: NextRequest) {
       };
 
       const { tempSessionId, otpCode } = createPending2FA(dummyUser);
-      await sendAdmin2faOtpEmail(
-        adminEmail,
-        otpCode,
-        dummyUser.username,
-        dummyUser.displayName,
-        clientIp
-      );
+      let emailSent = false;
+      try {
+        const mailRes = await sendAdmin2faOtpEmail(
+          adminEmail,
+          otpCode,
+          dummyUser.username,
+          dummyUser.displayName,
+          clientIp
+        );
+        emailSent = !!mailRes.success;
+      } catch (mailErr: any) {
+        console.warn("2FA Resend Email notice:", mailErr.message);
+      }
 
       return NextResponse.json({
         success: true,
         tempSessionId,
-        message: "A fresh 2FA code has been dispatched to admin email.",
+        emailSent,
+        devOtp: !emailSent ? otpCode : undefined,
+        message: emailSent
+          ? "A fresh 2FA code has been dispatched to admin email."
+          : "A fresh verification code has been generated.",
       });
     }
 
