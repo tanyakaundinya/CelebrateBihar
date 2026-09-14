@@ -549,6 +549,14 @@ export default function AdminOperationsDashboard() {
   // Update Booking Status
   const handleUpdateStatus = async (bookingId: string, newStatus: BookingRecord["status"]) => {
     try {
+      // Optimistic local update
+      setBookings((prev) =>
+        prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
+      );
+      if (selectedBookingDetail?.id === bookingId) {
+        setSelectedBookingDetail((prev) => (prev ? { ...prev, status: newStatus } : null));
+      }
+
       const res = await fetch("/api/admin/bookings", {
         method: "PATCH",
         headers: getAuthHeaders(),
@@ -556,14 +564,15 @@ export default function AdminOperationsDashboard() {
       });
       const data = await res.json();
       if (data.success) {
-        setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b))
-        );
+        fetchData();
+      } else {
+        alert(data.error || "Failed to update booking status.");
         fetchData();
       }
     } catch (err) {
       console.error("Status update error:", err);
       alert("Failed to update status. Please check your network.");
+      fetchData();
     }
   };
 
@@ -888,10 +897,10 @@ export default function AdminOperationsDashboard() {
     document.body.removeChild(link);
   };
 
-  // Filtered Bookings Logic (Strict separation of genuine appliance bookings)
+  // Filtered Bookings Logic (Robust status matching, district normalization, and comprehensive multi-field search)
   const filteredBookings = useMemo(() => {
     return bookings.filter((b) => {
-      // Status Filter
+      // 1. Status Filter
       if (selectedStatusFilter !== "ALL") {
         if (selectedStatusFilter === "NEEDS_VERIFICATION") {
           if (b.status !== "NEW_PENDING_DISPATCH" && b.status !== "PAYMENT_VERIFIED") return false;
@@ -900,22 +909,42 @@ export default function AdminOperationsDashboard() {
         }
       }
 
-      // District Filter
-      if (selectedDistrictFilter !== "ALL" && b.district.toLowerCase() !== selectedDistrictFilter.toLowerCase()) {
-        return false;
+      // 2. District Filter (handles aliases like "Rohtas (Sasaram)" vs "Rohtas")
+      if (selectedDistrictFilter !== "ALL") {
+        const bd = (b.district || "").toLowerCase().trim();
+        const fd = selectedDistrictFilter.toLowerCase().trim();
+        const bdCore = bd.split("(")[0].trim();
+        const fdCore = fd.split("(")[0].trim();
+        const matchesDistrict =
+          bd === fd ||
+          bdCore === fdCore ||
+          bd.includes(fdCore) ||
+          fd.includes(bdCore);
+        if (!matchesDistrict) return false;
       }
 
-      // Search query
+      // 3. Search query across all relevant customer, technician, and payment attributes
       if (searchTerm.trim()) {
         const q = searchTerm.trim().toLowerCase();
-        return (
-          b.id.toLowerCase().includes(q) ||
-          b.customerName.toLowerCase().includes(q) ||
-          b.phoneNumber.toLowerCase().includes(q) ||
-          b.address.toLowerCase().includes(q) ||
-          b.serviceName.toLowerCase().includes(q) ||
-          b.utrNumber.toLowerCase().includes(q)
-        );
+        const matchesSearch =
+          (b.id && b.id.toLowerCase().includes(q)) ||
+          (b.customerName && b.customerName.toLowerCase().includes(q)) ||
+          (b.phoneNumber && b.phoneNumber.toLowerCase().includes(q)) ||
+          (b.alternatePhone && b.alternatePhone.toLowerCase().includes(q)) ||
+          (b.email && b.email.toLowerCase().includes(q)) ||
+          (b.address && b.address.toLowerCase().includes(q)) ||
+          (b.landmark && b.landmark.toLowerCase().includes(q)) ||
+          (b.pincode && b.pincode.toLowerCase().includes(q)) ||
+          (b.serviceName && b.serviceName.toLowerCase().includes(q)) ||
+          (b.applianceDetail && b.applianceDetail.toLowerCase().includes(q)) ||
+          (b.district && b.district.toLowerCase().includes(q)) ||
+          (b.utrNumber && b.utrNumber.toLowerCase().includes(q)) ||
+          (b.payerName && b.payerName.toLowerCase().includes(q)) ||
+          (b.paymentAppUsed && b.paymentAppUsed.toLowerCase().includes(q)) ||
+          (b.assignedTechnician?.name && b.assignedTechnician.name.toLowerCase().includes(q)) ||
+          (b.assignedTechnician?.phone && b.assignedTechnician.phone.toLowerCase().includes(q)) ||
+          (b.adminNotes && b.adminNotes.toLowerCase().includes(q));
+        if (!matchesSearch) return false;
       }
 
       return true;
@@ -1568,17 +1597,30 @@ export default function AdminOperationsDashboard() {
 
       {/* Main Content Area */}
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 flex-1">
-        {/* Top 5 KPI Metric Cards strictly calculated from real database records */}
+        {/* Top 5 KPI Metric Cards strictly calculated from real database records (Interactive Filter Controls) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           {/* Card 1: Total Volume */}
-          <div className="group p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("bookings");
+              setSelectedStatusFilter("ALL");
+              setSelectedDistrictFilter("ALL");
+              setSearchTerm("");
+            }}
+            className={`group p-5 rounded-2xl sm:rounded-3xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeTab === "bookings" && selectedStatusFilter === "ALL" && selectedDistrictFilter === "ALL" && !searchTerm
+                ? "bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 shadow-md ring-2 ring-blue-500/20"
+                : "bg-white dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md"
+            }`}
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-blue-600 dark:text-blue-400">
                   <Layers className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800">
-                  Total
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-700">
+                  All
                 </span>
               </div>
               <span className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-950 dark:text-white block">
@@ -1589,20 +1631,31 @@ export default function AdminOperationsDashboard() {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 flex items-center justify-between">
-              <span>Advance Collected:</span>
-              <span className="text-blue-600 dark:text-blue-400">₹{stats.revenueAdvance}</span>
+              <span>Advance:</span>
+              <span className="text-blue-600 dark:text-blue-400 font-mono">₹{stats.revenueAdvance}</span>
             </div>
-          </div>
+          </button>
 
           {/* Card 2: Action Required */}
-          <div className="group p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("bookings");
+              setSelectedStatusFilter("NEEDS_VERIFICATION");
+            }}
+            className={`group p-5 rounded-2xl sm:rounded-3xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeTab === "bookings" && selectedStatusFilter === "NEEDS_VERIFICATION"
+                ? "bg-amber-50/70 dark:bg-amber-950/40 border-amber-500 shadow-md ring-2 ring-amber-500/20"
+                : "bg-white dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md"
+            }`}
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-blue-600 dark:text-blue-400">
+                <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900/60 text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800">
-                  Pending
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950 px-2.5 py-1 rounded-full border border-amber-200 dark:border-amber-900">
+                  Action
                 </span>
               </div>
               <span className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-950 dark:text-white block">
@@ -1618,17 +1671,28 @@ export default function AdminOperationsDashboard() {
                 {stats.pendingVerification > 0 ? "Dispatch Required" : "All Cleared"}
               </span>
             </div>
-          </div>
+          </button>
 
           {/* Card 3: Active Field Jobs */}
-          <div className="group p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("bookings");
+              setSelectedStatusFilter("TECHNICIAN_ASSIGNED");
+            }}
+            className={`group p-5 rounded-2xl sm:rounded-3xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeTab === "bookings" && (selectedStatusFilter === "TECHNICIAN_ASSIGNED" || selectedStatusFilter === "IN_PROGRESS")
+                ? "bg-blue-50/70 dark:bg-blue-950/40 border-blue-500 shadow-md ring-2 ring-blue-500/20"
+                : "bg-white dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md"
+            }`}
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-blue-600 dark:text-blue-400">
+                <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-900/60 text-blue-600 dark:text-blue-400">
                   <Wrench className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800">
-                  Live
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 dark:text-blue-300 bg-blue-100/70 dark:bg-blue-950 px-2.5 py-1 rounded-full border border-blue-200 dark:border-blue-900">
+                  Active
                 </span>
               </div>
               <span className="text-2xl sm:text-3xl font-black tracking-tight text-zinc-950 dark:text-white block">
@@ -1642,16 +1706,27 @@ export default function AdminOperationsDashboard() {
               <span>Deployed:</span>
               <span className="text-blue-600 dark:text-blue-400">{stats.assigned} Assigned</span>
             </div>
-          </div>
+          </button>
 
           {/* Card 4: Completed Visits */}
-          <div className="group p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("bookings");
+              setSelectedStatusFilter("COMPLETED");
+            }}
+            className={`group p-5 rounded-2xl sm:rounded-3xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeTab === "bookings" && selectedStatusFilter === "COMPLETED"
+                ? "bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 shadow-md ring-2 ring-emerald-500/20"
+                : "bg-white dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md"
+            }`}
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-blue-600 dark:text-blue-400">
+                <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900/60 text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-900">
                   Fulfilled
                 </span>
               </div>
@@ -1663,21 +1738,29 @@ export default function AdminOperationsDashboard() {
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 flex items-center justify-between">
-              <span>Completion Rate:</span>
+              <span>Success:</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">
                 {stats.total > 0 ? `${Math.round((stats.completed / stats.total) * 100)}%` : "0%"}
               </span>
             </div>
-          </div>
+          </button>
 
           {/* Card 5: Service Catalog Count */}
-          <div className="col-span-2 sm:col-span-1 group p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+          <button
+            type="button"
+            onClick={() => setActiveTab("services")}
+            className={`col-span-2 sm:col-span-1 group p-5 rounded-2xl sm:rounded-3xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+              activeTab === "services"
+                ? "bg-zinc-100 dark:bg-zinc-800 border-zinc-400 dark:border-zinc-600 shadow-md"
+                : "bg-white dark:bg-zinc-900/90 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700 shadow-xs hover:shadow-md"
+            }`}
+          >
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-blue-600 dark:text-blue-400">
                   <Compass className="w-4 h-4" />
                 </div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 bg-zinc-50 dark:bg-zinc-950 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-800">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-500 bg-zinc-100 dark:bg-zinc-800 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-zinc-700">
                   Catalog
                 </span>
               </div>
@@ -1692,7 +1775,7 @@ export default function AdminOperationsDashboard() {
               <span>Coverage:</span>
               <span className="text-blue-600 dark:text-blue-400">{activeHubs.length} Active Hubs</span>
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Unified Monochrome + Blue Tab Bar */}
@@ -1771,8 +1854,17 @@ export default function AdminOperationsDashboard() {
             </button>
           </div>
 
-          {/* Export Action */}
+          {/* Action Group */}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowNewBookingModal(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 dark:hover:bg-zinc-100 text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>New Booking</span>
+            </button>
+
             <button
               type="button"
               onClick={handleExportCSV}
@@ -1792,20 +1884,20 @@ export default function AdminOperationsDashboard() {
             {/* Search & Multi-Filters Toolbar */}
             <div className="p-4 sm:p-5 rounded-2xl sm:rounded-3xl bg-white dark:bg-zinc-900/90 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                <div className="sm:col-span-6 relative">
+                <div className="sm:col-span-5 relative">
                   <Search className="w-4 h-4 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Search by Customer, Mobile, Booking ID, UTR, Address..."
-                    className="w-full pl-10 pr-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 transition-all"
+                    placeholder="Search by Customer, Mobile, Booking ID, UTR, Address, Tech..."
+                    className="w-full pl-10 pr-16 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 transition-all"
                   />
                   {searchTerm && (
                     <button
                       type="button"
                       onClick={() => setSearchTerm("")}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-zinc-400 hover:text-zinc-600"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                     >
                       Clear
                     </button>
@@ -1816,11 +1908,12 @@ export default function AdminOperationsDashboard() {
                   <select
                     value={selectedStatusFilter}
                     onChange={(e) => setSelectedStatusFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 font-semibold"
+                    className="w-full px-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 font-semibold cursor-pointer"
                   >
                     <option value="ALL">All Statuses ({bookings.length})</option>
                     <option value="NEEDS_VERIFICATION">Needs Dispatch ({stats.pendingVerification})</option>
                     <option value="NEW_PENDING_DISPATCH">Pending Dispatch</option>
+                    <option value="PAYMENT_VERIFIED">Payment Verified</option>
                     <option value="TECHNICIAN_ASSIGNED">Technician Assigned ({stats.assigned})</option>
                     <option value="IN_PROGRESS">In Progress ({stats.inProgress})</option>
                     <option value="COMPLETED">Completed ({stats.completed})</option>
@@ -1828,11 +1921,11 @@ export default function AdminOperationsDashboard() {
                   </select>
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-4">
                   <select
                     value={selectedDistrictFilter}
                     onChange={(e) => setSelectedDistrictFilter(e.target.value)}
-                    className="w-full px-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 font-semibold"
+                    className="w-full px-4 py-2.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 font-semibold cursor-pointer"
                   >
                     <option value="ALL">All 38 Bihar Districts</option>
                     {ALL_BIHAR_DISTRICTS.filter((d) => d !== "ALL").map((dist) => (
@@ -1843,6 +1936,43 @@ export default function AdminOperationsDashboard() {
                   </select>
                 </div>
               </div>
+
+              {/* Active Filter Indicators & Reset Action */}
+              {(searchTerm || selectedStatusFilter !== "ALL" || selectedDistrictFilter !== "ALL") && (
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500">
+                    <span>Active Filters:</span>
+                    {selectedStatusFilter !== "ALL" && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-900">
+                        Status: {selectedStatusFilter}
+                      </span>
+                    )}
+                    {selectedDistrictFilter !== "ALL" && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold border border-zinc-200 dark:border-zinc-700">
+                        District: {selectedDistrictFilter}
+                      </span>
+                    )}
+                    {searchTerm && (
+                      <span className="px-2.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold border border-zinc-200 dark:border-zinc-700">
+                        Query: &quot;{searchTerm}&quot;
+                      </span>
+                    )}
+                    <span className="text-zinc-400">({filteredBookings.length} results)</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedStatusFilter("ALL");
+                      setSelectedDistrictFilter("ALL");
+                      setSearchTerm("");
+                    }}
+                    className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                  >
+                    Reset All Filters
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Bookings Table */}
@@ -2849,31 +2979,108 @@ export default function AdminOperationsDashboard() {
                 </button>
               </div>
 
+              {/* Status Selector in Modal */}
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">
+                    Current Operational Status
+                  </span>
+                  <span className="font-bold text-zinc-900 dark:text-white text-sm mt-0.5 block">
+                    {getStatusBadge(selectedBookingDetail.status).label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400">Update Status:</label>
+                  <select
+                    value={selectedBookingDetail.status}
+                    onChange={(e) =>
+                      handleUpdateStatus(selectedBookingDetail.id, e.target.value as BookingRecord["status"])
+                    }
+                    className="px-3 py-1.5 rounded-full text-xs font-bold border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+                  >
+                    <option value="NEW_PENDING_DISPATCH">Pending Dispatch</option>
+                    <option value="PAYMENT_VERIFIED">Payment Verified</option>
+                    <option value="TECHNICIAN_ASSIGNED">Tech Assigned</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                {/* Customer Info Card */}
                 <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">Customer</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">Customer Information</span>
                   <p><strong>Name:</strong> {selectedBookingDetail.customerName}</p>
                   <p><strong>Phone:</strong> +91 {selectedBookingDetail.phoneNumber}</p>
                   {selectedBookingDetail.alternatePhone && (
                     <p><strong>Alt Phone:</strong> +91 {selectedBookingDetail.alternatePhone}</p>
+                  )}
+                  {selectedBookingDetail.email && (
+                    <p><strong>Email:</strong> {selectedBookingDetail.email}</p>
                   )}
                   <p><strong>District:</strong> {selectedBookingDetail.district}</p>
                   <p><strong>Address:</strong> {selectedBookingDetail.address}</p>
                   {selectedBookingDetail.landmark && (
                     <p><strong>Landmark:</strong> {selectedBookingDetail.landmark}</p>
                   )}
+                  {selectedBookingDetail.pincode && (
+                    <p><strong>PIN Code:</strong> {selectedBookingDetail.pincode}</p>
+                  )}
                 </div>
 
+                {/* Service Specs Card */}
                 <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-800/80 space-y-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">Service Specs</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">Service Specifications</span>
                   <p><strong>Service:</strong> {selectedBookingDetail.serviceName}</p>
                   <p><strong>Appliance:</strong> {selectedBookingDetail.applianceDetail}</p>
-                  <p><strong>Slot:</strong> {selectedBookingDetail.slot}</p>
-                  <p><strong>Advance Fee:</strong> ₹{selectedBookingDetail.advanceFee || 99} (UTR: {selectedBookingDetail.utrNumber})</p>
-                  <p><strong>Status:</strong> {selectedBookingDetail.status}</p>
+                  <p><strong>Quantity:</strong> {selectedBookingDetail.unitCount || 1} Unit(s)</p>
+                  <p><strong>Scheduled Slot:</strong> {selectedBookingDetail.slot}</p>
+                  {selectedBookingDetail.specialNotes && (
+                    <p><strong>Customer Notes:</strong> {selectedBookingDetail.specialNotes}</p>
+                  )}
                 </div>
               </div>
 
+              {/* Payment Details Card */}
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-950 border border-zinc-200/80 dark:border-zinc-800/80 space-y-2 text-xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block">Payment &amp; UPI Verification</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-zinc-700 dark:text-zinc-300">
+                  <p><strong>Advance Token:</strong> ₹{selectedBookingDetail.advanceFee || 99}</p>
+                  <p><strong>Payment Status:</strong> {selectedBookingDetail.paymentStatus}</p>
+                  <p><strong>UTR / Transaction Ref:</strong> <span className="font-mono font-bold text-zinc-900 dark:text-white">{selectedBookingDetail.utrNumber}</span></p>
+                  <p><strong>Payment App:</strong> {selectedBookingDetail.paymentAppUsed || "UPI"}</p>
+                  <p><strong>Payer Name:</strong> {selectedBookingDetail.payerName || selectedBookingDetail.customerName}</p>
+                  {selectedBookingDetail.payerUpiId && (
+                    <p><strong>Payer UPI ID:</strong> {selectedBookingDetail.payerUpiId}</p>
+                  )}
+                  <p><strong>Payee UPI ID:</strong> {selectedBookingDetail.payeeUpi || "2dhirajkumar4726@okhdfcbank"}</p>
+                  <p><strong>Payee Name:</strong> {selectedBookingDetail.payeeName || "Dhiraj Kumar"}</p>
+                </div>
+
+                {/* Attached Payment Screenshot */}
+                {selectedBookingDetail.paymentScreenshot && (
+                  <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 block mb-1.5">
+                      Attached Payment Proof:
+                    </span>
+                    <div className="relative inline-block border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden max-h-48">
+                      <img
+                        src={selectedBookingDetail.paymentScreenshot}
+                        alt="Payment Proof"
+                        className="max-h-48 w-auto object-contain cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => {
+                          const w = window.open("");
+                          w?.document.write(`<img src="${selectedBookingDetail.paymentScreenshot}" style="max-width:100%; height:auto;" />`);
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Assigned Technician Card */}
               {selectedBookingDetail.assignedTechnician && (
                 <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 space-y-2 text-xs">
                   <div className="flex items-center justify-between">
@@ -2892,6 +3099,11 @@ export default function AdminOperationsDashboard() {
                       <p className="text-zinc-600 dark:text-zinc-400 text-[11px]">
                         Mobile: +91 {selectedBookingDetail.assignedTechnician.phone}
                       </p>
+                      {selectedBookingDetail.adminNotes && (
+                        <p className="text-zinc-500 text-[10px] mt-0.5">
+                          Notes: {selectedBookingDetail.adminNotes}
+                        </p>
+                      )}
                     </div>
 
                     <a
@@ -2905,17 +3117,18 @@ export default function AdminOperationsDashboard() {
                       className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-colors"
                     >
                       <Send className="w-3.5 h-3.5" />
-                      <span>Forward Full Job Card to Tech (WhatsApp)</span>
+                      <span>Forward Full Job Card on WhatsApp</span>
                     </a>
                   </div>
                 </div>
               )}
 
+              {/* Footer Actions */}
               <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <a
                     href={`tel:${selectedBookingDetail.phoneNumber}`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors"
                   >
                     <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>Call Client</span>
@@ -2926,34 +3139,42 @@ export default function AdminOperationsDashboard() {
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 transition-colors"
                   >
                     <Send className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                     <span>WhatsApp Client</span>
                   </a>
 
-                  {!selectedBookingDetail.assignedTechnician && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = selectedBookingDetail;
-                        setSelectedBookingDetail(null);
-                        setSelectedTechName("");
-                        setSelectedTechPhone("");
-                        setAssignTechBooking(target);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-100 text-white dark:text-zinc-950"
-                    >
-                      <UserCheck className="w-3.5 h-3.5 text-blue-400 dark:text-blue-600" />
-                      <span>Dispatch Technician</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = selectedBookingDetail;
+                      setSelectedBookingDetail(null);
+                      setSelectedTechName(target.assignedTechnician?.name || "");
+                      setSelectedTechPhone(target.assignedTechnician?.phone || "");
+                      setArrivalWindow(target.assignedTechnician?.arrivalWindow || "Within 2 Hours");
+                      setAssignTechBooking(target);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-zinc-950 dark:bg-white hover:bg-zinc-800 dark:hover:bg-zinc-100 text-white dark:text-zinc-950 transition-colors"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-blue-400 dark:text-blue-600" />
+                    <span>{selectedBookingDetail.assignedTechnician ? "Re-assign Tech" : "Dispatch Tech"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBooking(selectedBookingDetail.id)}
+                    className="p-2 rounded-full border border-zinc-200 dark:border-zinc-700 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                    title="Delete Record"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setSelectedBookingDetail(null)}
-                  className="px-6 py-2 rounded-full text-xs font-bold bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 hover:bg-zinc-800 cursor-pointer"
+                  className="px-6 py-2 rounded-full text-xs font-bold bg-zinc-200 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 hover:bg-zinc-300 dark:hover:bg-zinc-700 cursor-pointer"
                 >
                   Close
                 </button>
@@ -3204,6 +3425,17 @@ export default function AdminOperationsDashboard() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Customer Email (Optional)</label>
+                    <input
+                      type="email"
+                      value={newCustEmail}
+                      onChange={(e) => setNewCustEmail(e.target.value)}
+                      placeholder="e.g. customer@gmail.com"
+                      className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
                     <label className="font-bold text-zinc-700 dark:text-zinc-300">Bihar District *</label>
                     <select
                       value={newCustDistrict}
@@ -3214,6 +3446,20 @@ export default function AdminOperationsDashboard() {
                         <option key={dist} value={dist}>{dist}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Complete Address *</label>
+                    <input
+                      type="text"
+                      value={newCustAddress}
+                      onChange={(e) => setNewCustAddress(e.target.value)}
+                      placeholder="House / Flat No, Street, Colony..."
+                      required
+                      className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                    />
                   </div>
 
                   <div className="space-y-1">
@@ -3228,37 +3474,62 @@ export default function AdminOperationsDashboard() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="font-bold text-zinc-700 dark:text-zinc-300">Complete Address *</label>
-                  <input
-                    type="text"
-                    value={newCustAddress}
-                    onChange={(e) => setNewCustAddress(e.target.value)}
-                    placeholder="House / Flat No, Street, Colony..."
-                    required
-                    className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
-                  />
-                </div>
-
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Service Name</label>
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Choose Service Category</label>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setNewServiceName(e.target.value);
+                        }
+                      }}
+                      className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold"
+                    >
+                      <option value="">-- Quick Select from Catalog --</option>
+                      {categories.flatMap((c) =>
+                        c.services.map((s) => (
+                          <option key={s.id} value={s.name}>
+                            {c.categoryName}: {s.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Service Name *</label>
                     <input
                       type="text"
                       value={newServiceName}
                       onChange={(e) => setNewServiceName(e.target.value)}
                       placeholder="e.g. AC Repair & Service"
+                      required
+                      className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2 space-y-1">
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Appliance Model / Fault *</label>
+                    <input
+                      type="text"
+                      value={newApplianceDetail}
+                      onChange={(e) => setNewApplianceDetail(e.target.value)}
+                      placeholder="e.g. Split AC (1.5 Ton) - Voltas - Not Cooling"
+                      required
                       className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Appliance Model / Fault</label>
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Unit Quantity</label>
                     <input
-                      type="text"
-                      value={newApplianceDetail}
-                      onChange={(e) => setNewApplianceDetail(e.target.value)}
-                      placeholder="e.g. 1.5 Ton Split AC (Voltas)"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={newUnitCount}
+                      onChange={(e) => setNewUnitCount(Number(e.target.value) || 1)}
                       className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-semibold focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                     />
                   </div>
@@ -3277,12 +3548,12 @@ export default function AdminOperationsDashboard() {
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Advance UTR (If Paid)</label>
+                    <label className="font-bold text-zinc-700 dark:text-zinc-300">Advance UTR / Transaction ID (If Paid)</label>
                     <input
                       type="text"
                       value={newUtrNumber}
                       onChange={(e) => setNewUtrNumber(e.target.value)}
-                      placeholder="e.g. UPI123456789012 (or leave empty)"
+                      placeholder="e.g. 123456789012 (or leave empty)"
                       className="w-full px-4 py-2.5 rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 font-mono focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600"
                     />
                   </div>

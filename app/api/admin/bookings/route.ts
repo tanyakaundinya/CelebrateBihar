@@ -82,11 +82,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Filter by district
+    // Filter by district (supports aliases like Rohtas (Sasaram))
     if (district && district !== "ALL") {
-      filteredBookings = filteredBookings.filter(
-        (b) => b.district.toLowerCase() === district.toLowerCase()
-      );
+      const qDist = district.toLowerCase().split("(")[0].trim();
+      filteredBookings = filteredBookings.filter((b) => {
+        if (!b.district) return false;
+        const bDist = b.district.toLowerCase().split("(")[0].trim();
+        return bDist === qDist || bDist.includes(qDist) || qDist.includes(bDist);
+      });
     }
 
     // Search query
@@ -94,16 +97,16 @@ export async function GET(req: NextRequest) {
       const q = search.trim().toLowerCase();
       filteredBookings = filteredBookings.filter(
         (b) =>
-          b.id.toLowerCase().includes(q) ||
-          b.customerName.toLowerCase().includes(q) ||
-          b.phoneNumber.includes(q) ||
+          (b.id && b.id.toLowerCase().includes(q)) ||
+          (b.customerName && b.customerName.toLowerCase().includes(q)) ||
+          (b.phoneNumber && b.phoneNumber.includes(q)) ||
           (b.alternatePhone && b.alternatePhone.includes(q)) ||
           (b.email && b.email.toLowerCase().includes(q)) ||
-          b.utrNumber.toLowerCase().includes(q) ||
-          b.serviceName.toLowerCase().includes(q) ||
-          b.applianceDetail.toLowerCase().includes(q) ||
-          b.district.toLowerCase().includes(q) ||
-          b.address.toLowerCase().includes(q) ||
+          (b.utrNumber && b.utrNumber.toLowerCase().includes(q)) ||
+          (b.serviceName && b.serviceName.toLowerCase().includes(q)) ||
+          (b.applianceDetail && b.applianceDetail.toLowerCase().includes(q)) ||
+          (b.district && b.district.toLowerCase().includes(q)) ||
+          (b.address && b.address.toLowerCase().includes(q)) ||
           (b.payerName && b.payerName.toLowerCase().includes(q)) ||
           (b.assignedTechnician?.name &&
             b.assignedTechnician.name.toLowerCase().includes(q))

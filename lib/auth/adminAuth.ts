@@ -27,8 +27,9 @@ interface Pending2FA {
   expiresAt: number;
 }
 
-const ADMIN_SECRET =
-  process.env.ADMIN_AUTH_SECRET || "cb-enterprise-sec-salt-bihar-2026-auth";
+function getAdminSecret(): string {
+  return process.env.ADMIN_AUTH_SECRET || "cb-enterprise-sec-salt-bihar-2026-auth";
+}
 
 const SESSION_MAX_AGE_MS = 8 * 60 * 60 * 1000; // 8 hours max session
 const OTP_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes 2FA code validity
@@ -184,7 +185,7 @@ export function generateAdminSessionToken(user: AdminUser): string {
 
   const payload = Buffer.from(JSON.stringify(sessionData)).toString("base64url");
   const signature = crypto
-    .createHmac("sha256", ADMIN_SECRET)
+    .createHmac("sha256", getAdminSecret())
     .update(payload)
     .digest("base64url");
 
@@ -201,17 +202,15 @@ export function decodeAndVerifyToken(token: string): AdminSession | null {
     const [payload, signature] = token.split(".");
     if (!payload || !signature) return null;
 
+    const secret = getAdminSecret();
     const expectedSignature = crypto
-      .createHmac("sha256", ADMIN_SECRET)
+      .createHmac("sha256", secret)
       .update(payload)
       .digest("base64url");
 
-    if (
-      !crypto.timingSafeEqual(
-        Buffer.from(signature),
-        Buffer.from(expectedSignature)
-      )
-    ) {
+    const bufSig = Buffer.from(signature);
+    const bufExp = Buffer.from(expectedSignature);
+    if (bufSig.length !== bufExp.length || !crypto.timingSafeEqual(bufSig, bufExp)) {
       return null;
     }
 
