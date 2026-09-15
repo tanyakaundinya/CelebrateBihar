@@ -1382,11 +1382,7 @@ export default function AdminOperationsDashboard() {
               </form>
             )}
 
-            {/* Security Guarantee Pill */}
-            <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center gap-2 text-[10px] text-zinc-400 dark:text-zinc-500">
-              <Shield className="w-3 h-3 text-emerald-500" />
-              <span>HMAC SHA-256 Tokens • 15m Auto-Lock • Rate Limiting Active</span>
-            </div>
+
           </motion.div>
         </main>
 
