@@ -83,7 +83,7 @@ const INITIAL_ACTIVE_HUBS = [
 export default function AdminOperationsDashboard() {
   // Authentication & 2FA State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [usernameInput, setUsernameInput] = useState<string>("admin");
+  const [usernameInput, setUsernameInput] = useState<string>("");
   const [passwordInput, setPasswordInput] = useState<string>("");
   const [authError, setAuthError] = useState<string>("");
   const [authSuccessMsg, setAuthSuccessMsg] = useState<string>("");
@@ -1181,58 +1181,6 @@ export default function AdminOperationsDashboard() {
             {/* STEP 1: CREDENTIAL AUTHENTICATION */}
             {!is2FAPending ? (
               <form onSubmit={handleLoginSubmit} className="space-y-4">
-                {/* Role Switcher */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">
-                    Select Access Role
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={isLocked}
-                      onClick={() => {
-                        setUsernameInput("admin");
-                        setAuthError("");
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                        usernameInput === "admin"
-                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/50 dark:border-blue-500 shadow-2xs"
-                          : "border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                        <ShieldCheck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>Super Admin</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        Full Catalog, Security & Operations
-                      </p>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isLocked}
-                      onClick={() => {
-                        setUsernameInput("dispatcher");
-                        setAuthError("");
-                      }}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                        usernameInput === "dispatcher"
-                          ? "border-blue-600 bg-blue-50/60 dark:bg-blue-950/50 dark:border-blue-500 shadow-2xs"
-                          : "border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-900 dark:text-white">
-                        <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        <span>Fleet Dispatcher</span>
-                      </div>
-                      <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                        Bookings, Techs & WhatsApp Desk
-                      </p>
-                    </button>
-                  </div>
-                </div>
-
                 {/* Username Input */}
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider block">
@@ -1243,8 +1191,9 @@ export default function AdminOperationsDashboard() {
                     disabled={isLocked}
                     value={usernameInput}
                     onChange={(e) => setUsernameInput(e.target.value)}
-                    placeholder="e.g. admin or dispatcher"
+                    placeholder="Enter your administrative username"
                     className="w-full px-4 py-3 text-sm rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 font-mono transition-all disabled:opacity-50"
+                    autoFocus
                   />
                 </div>
 
@@ -1268,7 +1217,6 @@ export default function AdminOperationsDashboard() {
                       onChange={(e) => setPasswordInput(e.target.value)}
                       placeholder="Enter administrative password"
                       className="w-full px-4 py-3 text-sm rounded-2xl border border-zinc-200 dark:border-zinc-700 bg-zinc-50/80 dark:bg-zinc-950/80 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 font-mono transition-all disabled:opacity-50"
-                      autoFocus
                     />
                     <button
                       type="button"
@@ -1280,7 +1228,7 @@ export default function AdminOperationsDashboard() {
                   </div>
                 </div>
 
-                {/* Options & Quick Preset */}
+                {/* Options */}
                 <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 pt-1">
                   <label className="flex items-center gap-2 cursor-pointer select-none">
                     <input
@@ -1291,33 +1239,6 @@ export default function AdminOperationsDashboard() {
                     />
                     <span>Remember Session</span>
                   </label>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUsernameInput("admin");
-                        setPasswordInput("Bihar@Admin2026!");
-                        setAuthError("");
-                      }}
-                      className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <Sparkles className="w-3 h-3" />
-                      <span>Admin Fill</span>
-                    </button>
-                    <span className="text-zinc-300 dark:text-zinc-700">•</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUsernameInput("dispatcher");
-                        setPasswordInput("Bihar@Dispatch2026!");
-                        setAuthError("");
-                      }}
-                      className="text-blue-600 dark:text-blue-400 hover:underline font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Dispatch Fill</span>
-                    </button>
-                  </div>
                 </div>
 
                 {/* Submit Button */}
